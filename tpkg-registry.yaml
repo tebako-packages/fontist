@@ -14,7 +14,7 @@ payloads:
           - triplet: aarch64-macos
             image:
               url: "https://github.com/tebako-packages/fontist/releases/download/3.0.10/fontist-3.0.10-aarch64-macos.tfs"
-              sha256: "IMAGE_SHA256"  # pinned by tools/publish
+              sha256: "25dd5c74bc3581d361badf3b0be8fff72a5f110350ed9b48560b06d4704ea898"  # pinned by tools/publish
             manifest:
               url: "https://github.com/tebako-packages/fontist/releases/download/3.0.10/fontist-3.0.10.manifest.yaml"
-              sha256: "MANIFEST_SHA256"  # pinned by tools/publish
+              sha256: "cf1cb70b220aa86b019fa115a13e2fad975ed861b1ddef6f7c5242e1ee496a16"  # pinned by tools/publish
