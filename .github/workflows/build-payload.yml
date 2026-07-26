@@ -23,6 +23,9 @@ jobs:
       - name: Build tebako-cli (tamatebako/tebako-rs, pinned)
         run: |
           git clone --depth 1 https://github.com/tamatebako/tebako-rs "$RUNNER_TEMP/tebako-rs"
+          # tfs's optional dwarfs-t backend is a path dep on this sibling
+          # (disabled by default; the manifest must still resolve).
+          git clone --depth 1 https://github.com/tamatebako/dwarfs-rs "$RUNNER_TEMP/dwarfs-rs"
           cargo build --release --manifest-path "$RUNNER_TEMP/tebako-rs/Cargo.toml" -p tebako-cli -p tfs-cli
           echo "$RUNNER_TEMP/tebako-rs/target/release" >> "$GITHUB_PATH"
 
