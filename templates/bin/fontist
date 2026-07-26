@@ -1,0 +1,19 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# tebako-packages/fontist payload entrypoint (kind: app, runtime-required).
+#
+# The payload image can be mounted at an arbitrary point by the dispatcher
+# (spec 07 mounts it at "/"), so the gem home is derived from this file's
+# own location instead of being baked in. The language runtime's default
+# gem dir (its own image) supplies the default gems this closure relies on
+# (json, bigdecimal, strscan, racc, rexml, ... — see docs/build-notes.md).
+root = File.expand_path("..", __dir__)
+gem_dir = File.join(root, "lib/ruby/gems/3.3.0")
+
+ENV["GEM_HOME"] = gem_dir
+ENV["GEM_PATH"] = [gem_dir, Gem.default_dir].join(File::PATH_SEPARATOR)
+Gem.clear_paths
+
+gem "fontist", "= 3.0.10"
+load Gem.bin_path("fontist", "fontist", "3.0.10")

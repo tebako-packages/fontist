@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# tools/resolve_closure <version> — regenerate closure/<version>-<triplet>.txt
+# for a NEW upstream fontist version: resolve the Gemfile with the runtime
+# ruby's bundler (NO --prefer-local — see docs/build-notes.md § Press), then
+# emit the pinned install set with sha256s from the compact index.
+#
+# Manual maintainer step; the committed closure file is the build input.
+# Requires: SHIM (deploy-driver ruby shim, from a stub press — tools/build
+# creates one) and python3 (HTTP only, no ruby).
+set -euo pipefail
+
+VERSION="${1:?usage: tools/resolve_closure <fontist-version>}"
+TRIPLET="${TRIPLET:-aarch64-macos}"
+SHIM="${SHIM:?set SHIM to a deploy-driver ruby shim}"
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+WORK="$(mktemp -d)"
+
+mkdir -p "$WORK/app" "$WORK/gemhome"
+cat > "$WORK/app/Gemfile" <<GEM
+source "https://rubygems.org"
+gem "fontist", "$VERSION"
+GEM
+
+cat > "$WORK/lock.rb" <<'RB'
+require "fileutils"
+CERT_DIR = ENV.fetch("CERT_DIR")
+FileUtils.mkdir_p(CERT_DIR)
+require "rubygems/request"
+module TebakoDeployCerts
+  def get_cert_files
+    super.map do |src|
+      dst = File.join(CERT_DIR, File.basename(src))
+      FileUtils.cp(src, dst) unless File.exist?(dst)
+      dst
+    end
+  end
+end
+Gem::Request.singleton_class.prepend(TebakoDeployCerts)
+Dir.chdir(ENV.fetch("APP_DIR"))
+ARGV.replace(["lock", "--print"])
+load Gem.bin_path("bundler", "bundle")
+RB
+
+TEBAKO_PASS_THROUGH=1 \
+GEM_HOME="$WORK/gemhome" GEM_PATH="$WORK/gemhome" \
+GEM_SPEC_CACHE="$WORK/gemhome/spec_cache" \
+SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}" \
+CERT_DIR="$WORK/ssl_certs" APP_DIR="$WORK/app" \
+  "$SHIM" "$WORK/lock.rb" > "$WORK/lock.txt"
+
+echo "# lock written to $WORK/lock.txt — review it, apply the pins and"
+echo "# skip-defaults policy from recipe.yml, choose platform variants for"
+echo "# native gems (nokogiri/ffi: <triplet> precompiled; brotli: source),"
+echo "# then fetch each .gem and record its /info checksum into"
+echo "# closure/$VERSION-$TRIPLET.txt (format: <gem>-<ver>[-<plat>] <sha256>)."

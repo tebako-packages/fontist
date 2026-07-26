@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# tools/build — stage the fontist closure with a tebako runtime's own ruby
+# and image it (aarch64-macos leg; one mechanical leg per triplet).
+#
+# Inputs (env, all with sane defaults):
+#   TEBAKO_CLI      tebako-cli binary (default: tebako on PATH)
+#   MKDWARFS        mkdwarfs-t binary (default: mkdwarfs on PATH)
+#   WORK            build workspace (default: out/work-aarch64-macos)
+#   OUT             artifact dir   (default: out/aarch64-macos)
+#
+# Produces: $OUT/fontist-<version>-aarch64-macos.tfs (+ manifest yaml).
+#
+# Rules honored: no host ruby anywhere (the runtime IS the ruby — every
+# ruby process runs through the deploy-driver shim the CLI's own press
+# produces); every download sha256-verified (.gem files against the
+# compact index /info checksums, ruby tarball against the recipe pin,
+# the runtime against the tebako-runtime-ruby release manifest, verified
+# by tebako-cli's resolver).
+set -euo pipefail
+
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+VERSION="3.0.10"
+TRIPLET="aarch64-macos"
+RUBY_V="3.3.7"
+API_V="3.3.0"
+
+TEBAKO_CLI="${TEBAKO_CLI:-tebako}"
+MKDWARFS="${MKDWARFS:-mkdwarfs}"
+WORK="${WORK:-$FEEDSTOCK/out/work-$TRIPLET}"
+OUT="${OUT:-$FEEDSTOCK/out/$TRIPLET}"
+CLOSURE="$FEEDSTOCK/closure/$VERSION-$TRIPLET.txt"
+
+SDK_URL="https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.7.tar.gz"
+SDK_SHA256="9c37c3b12288c7aec20ca121ce76845be5bb5d77662a24919651aaf1d12c8628"
+
+step() { printf '\n== %s\n' "$*"; }
+
+mkdir -p "$WORK" "$OUT" "$WORK/gempkgs"
+
+# ---------------------------------------------------------------- runtime
+step "resolve the tebako runtime (tebako-cli cache, manifest-verified)"
+# A stub press makes the CLI resolve the runtime AND yields the
+# deploy-driver shim (o/p/ruby) used for every ruby invocation below.
+# The Gemfile forces the bundler deploy ops (a SimpleScript stub produces
+# no driver); base64 is dep-free and installs in seconds.
+mkdir -p "$WORK/stubapp"
+printf 'puts "stub"\n' > "$WORK/stubapp/stub.rb"
+printf 'source "https://rubygems.org"\ngem "base64"\n' > "$WORK/stubapp/Gemfile"
+"$TEBAKO_CLI" press -r "$WORK/stubapp" -e stub.rb -o "$WORK/stub-pkg" \
+  -p "$WORK/prefix" -l warn
+SHIM="$WORK/prefix/o/p/ruby"
+[ -x "$SHIM" ] || { echo "no deploy shim at $SHIM"; exit 1; }
+
+# ------------------------------------------------------------- SDK headers
+step "mkmf SDK header dir (ruby $RUBY_V, pinned + sha256-verified)"
+SDK="$WORK/sdk"
+if [ ! -f "$SDK/include/ruby-$API_V/ruby.h" ]; then
+  mkdir -p "$SDK"
+  curl -sL -o "$WORK/ruby.tar.gz" "$SDK_URL"
+  echo "$SDK_SHA256  $WORK/ruby.tar.gz" | shasum -a 256 -c -
+  mkdir -p "$WORK/ruby-src" "$WORK/ruby-build"
+  tar xzf "$WORK/ruby.tar.gz" -C "$WORK/ruby-src" --strip-components=1
+  (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
+      --disable-shared --disable-install-doc > configure.log 2>&1)
+  mkdir -p "$SDK/include/ruby-$API_V/arm64-darwin24/ruby"
+  cp -R "$WORK/ruby-src/include/." "$SDK/include/ruby-$API_V/"
+  cp "$WORK/ruby-build"/.ext/include/*/ruby/config.h \
+     "$SDK/include/ruby-$API_V/arm64-darwin24/ruby/config.h"
+fi
+sed "s|@@SDK_INCLUDE@@|$SDK/include/ruby-$API_V|" \
+  "$FEEDSTOCK/tools/sdk_patch.rb.in" > "$WORK/sdk_patch.rb"
+
+# ---------------------------------------------------------- fetch the gems
+step "fetch + sha256-verify the closure ($CLOSURE)"
+grep -v '^#' "$CLOSURE" | grep -v '^\s*$' | while read -r full sha; do
+  f="$WORK/gempkgs/$full.gem"
+  [ -f "$f" ] && continue
+  curl -sL -o "$f" "https://rubygems.org/downloads/$full.gem"
+  actual=$(shasum -a 256 "$f" | cut -d' ' -f1)
+  [ "$actual" = "$sha" ] || { echo "SHA256 MISMATCH $full: $actual != $sha"; exit 1; }
+done
+echo "all gems verified"
+
+# ------------------------------------------------------------------ stage
+step "stage the closure with the runtime ruby (no host ruby)"
+export TEBAKO_PASS_THROUGH=1 SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}"
+export GEM_HOME="$WORK/stage" GEM_PATH="$WORK/stage"
+export GEM_SPEC_CACHE="$WORK/stage/spec_cache"
+export CERT_DIR="$WORK/ssl_certs"
+export STAGE_DIR="$WORK/stage" GEMPKGS_DIR="$WORK/gempkgs"
+# brotli is the one source-built native dep: build it first, with the SDK
+# header preload active (mkmf re-enters the runtime via the shim).
+# PKG_CONFIG_LIBDIR masks any system libbrotli so the gem builds its
+# vendored sources (self-contained payload; see tools/stage_app.rb).
+export RUBYOPT="-r$WORK/sdk_patch.rb" PKG_CONFIG_LIBDIR=/nonexistent
+brotli=$(ls "$WORK"/gempkgs/brotli-*.gem | head -1)
+"$SHIM" "$FEEDSTOCK/tools/stage_app.rb" 2>&1 | grep -E "brotli|STAGE-OK|ERROR" \
+  || true   # stage_app installs the whole dir; brotli just builds first
+unset RUBYOPT PKG_CONFIG_LIBDIR
+[ -f "$WORK/stage/extensions/arm64-darwin-24/$API_V-static"/brotli-*/brotli/brotli.bundle ] \
+  || { echo "brotli native build failed"; exit 1; }
+
+# ----------------------------------------------------------- payload tree
+step "assemble the payload tree"
+PAYLOAD="$WORK/payload"
+rm -rf "$PAYLOAD"
+mkdir -p "$PAYLOAD/bin" "$PAYLOAD/lib/ruby/gems/$API_V" "$PAYLOAD/local"
+G="$PAYLOAD/lib/ruby/gems/$API_V"
+cp -R "$WORK/stage/gems" "$G/gems"
+cp -R "$WORK/stage/specifications" "$G/specifications"
+cp -R "$WORK/stage/extensions" "$G/extensions"
+[ -d "$WORK/stage/build_info" ] && cp -R "$WORK/stage/build_info" "$G/build_info"
+# drop stale byproducts of failed in-flight builds, if any
+find "$G/gems" -maxdepth 1 -name "strscan-*" -exec rm -rf {} +
+find "$G/extensions" -name "strscan-*" -exec rm -rf {} +
+cp "$FEEDSTOCK/templates/bin/fontist" "$PAYLOAD/bin/fontist"
+chmod 755 "$PAYLOAD/bin/fontist"
+cp "$FEEDSTOCK/templates/local/stub.rb" "$PAYLOAD/local/stub.rb"
+
+# ------------------------------------------------------------------ image
+step "mkdwarfs-t image"
+IMG="$OUT/fontist-$VERSION-$TRIPLET.tfs"
+rm -f "$IMG"
+"$MKDWARFS" -i "$PAYLOAD" -o "$IMG" --no-progress
+sha=$(shasum -a 256 "$IMG" | cut -d' ' -f1)
+echo "image: $IMG"
+echo "sha256: $sha"
+
+# --------------------------------------------------------------- manifest
+step "fill the manifest"
+MAN="$OUT/fontist-$VERSION.manifest.yaml"
+sed -e "s|blob_sha256: \"0*\"|blob_sha256: \"$sha\"|" \
+    -e "s|created: \"[^\"]*\"|created: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" \
+    -e "s|commit: \"0*\"|commit: \"$(git -C "$FEEDSTOCK" rev-parse HEAD)\"|" \
+    "$FEEDSTOCK/manifests/payload.yaml" > "$MAN"
+echo "manifest: $MAN"

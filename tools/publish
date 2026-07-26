@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# tools/publish <version> — release the built artifacts and pin this repo's
+# tpkg-registry.yaml (conventions.md: per-triplet payload artifacts +
+# SHA256SUMS + registry yaml at the default-branch root).
+set -euo pipefail
+
+VERSION="${1:?usage: tools/publish <version>}"
+FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
+TRIPLET="aarch64-macos"
+OUT="$FEEDSTOCK/out/$TRIPLET"
+IMG="fontist-$VERSION-$TRIPLET.tfs"
+MAN="fontist-$VERSION.manifest.yaml"
+
+[ -f "$OUT/$IMG" ] || { echo "missing $OUT/$IMG — run tools/build first"; exit 1; }
+[ -f "$OUT/$MAN" ] || { echo "missing $OUT/$MAN — run tools/build first"; exit 1; }
+
+img_sha=$(shasum -a 256 "$OUT/$IMG" | cut -d' ' -f1)
+man_sha=$(shasum -a 256 "$OUT/$MAN" | cut -d' ' -f1)
+
+# SHA256SUMS next to the artifacts (also uploaded).
+{ echo "$img_sha  $IMG"; echo "$man_sha  $MAN"; } > "$OUT/SHA256SUMS"
+
+# Pin the registry file at the repo root.
+sed -i '' \
+  -e "s|\"IMAGE_SHA256\"|\"$img_sha\"|" \
+  -e "s|\"MANIFEST_SHA256\"|\"$man_sha\"|" \
+  "$FEEDSTOCK/tpkg-registry.yaml"
+
+gh release create "$VERSION" \
+  --repo tebako-packages/fontist \
+  --title "fontist $VERSION" \
+  --notes "kind: app payload (runtime-required, ruby ~> 3.3.0 ABI). Artifacts: $IMG (+ manifest, SHA256SUMS). See docs/build-notes.md." \
+  "$OUT/$IMG" "$OUT/$MAN" "$OUT/SHA256SUMS"
+
+echo "released $VERSION"
+echo "next: add the feedstock to tebako-packages/index tpkg-registry.yaml"

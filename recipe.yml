@@ -1,0 +1,54 @@
+# Feedstock recipe for fontist
+# spec 13 §9 + docs/conventions.md in tebako-packages/index
+name: "fontist"
+kind: app
+summary: "Fontist — the font installer CLI (ruby app; runtime-required payload)"
+
+upstream:
+  # RubyGems closure, not a tarball: the dependency set is resolved from the
+  # rubygems compact index and every .gem is sha256-verified against the
+  # /info/<gem> checksum before use (tools/build).
+  gem: "fontist"
+  version: "3.0.10"
+  source: "https://rubygems.org"
+
+build:
+  system: gemstage         # stage a GEM_HOME closure with a tebako runtime's own ruby
+  runtime:
+    engine: ruby
+    version: "3.3.7"       # the staging + exec runtime (tebako-runtime-ruby)
+    tebako: "0.15.9"       # runtime release line
+  # mkmf SDK for the one source-built native dep (brotli): headers of the
+  # exact ruby the runtime ships (the runtime image carries none).
+  sdk:
+    url: "https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.7.tar.gz"
+    sha256: "9c37c3b12288c7aec20ca121ce76845be5bb5d77662a24919651aaf1d12c8628"
+  # Resolution overrides, each justified in docs/build-notes.md:
+  pins:
+    liquid: "5.6.0"        # >= 5.6.1 demands strscan >= 3.1.1 (source-only native)
+  # Constraints the runtime's own default gems already satisfy — the payload
+  # relies on the runtime for these (runtime-required kind: app):
+  skip_defaults: [json, bigdecimal, strscan, racc, drb, uri, logger,
+                  minitest, securerandom, benchmark, ostruct, rexml]
+
+# Factory tools used by tools/build (image creation). The dwarfs-t
+# mkdwarfs/tebakofs binaries ship as per-platform assets of libtfs
+# releases; every download is verified against the release's SHA256SUMS.
+tools:
+  repo: "tamatebako/libtfs"
+  release: "v0.13.0"
+
+platforms:
+  - aarch64-macos          # triplet-bound (nokogiri/ffi precompiled, brotli
+                           # compiled per-triplet). More triplets: CI legs.
+
+provides:
+  entrypoints:
+    - name: "fontist"
+      path: "/bin/fontist"
+      version: "3.0.10"
+      runtime_requirement: {engine: ruby, constraint: "~> 3.3.0"}
+
+annotations:
+  gem: fontist
+  gem_version: "3.0.10"

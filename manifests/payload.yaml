@@ -1,0 +1,37 @@
+schema_version: 1
+# Payload manifest for fontist (spec 03 §2.2; filled by tools/build).
+identity:
+  schema_version: 1
+  kind: app
+  name: "fontist"
+  version: "3.0.10"
+  producer: {tool: feedstock-build, tool_version: "1"}
+  created: "2026-07-27T00:00:00Z"          # pinned at release time
+  source:
+    src_sha256: ""                          # n/a: rubygems closure (per-gem checksums, see recipe)
+    commit: "0000000000000000000000000000000000000000"  # feedstock commit, pinned at release
+    builder: "local"                        # "gha:run:<id>" on CI builds
+  digest:
+    tree_hash: ""                           # merkle root when the CAS lands (spec 03)
+    blob_sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+  signing: {state: unsigned}
+  encryption: {state: none}
+  annotations:
+    gem: fontist
+    gem_version: "3.0.10"
+provides:
+  entrypoints:
+    - name: fontist
+      path: /bin/fontist
+      args_default: []
+      runtime_requirement:
+        engine: ruby
+        # native-extension payload (nokogiri/ffi/brotli): the abi line of
+        # the staging runtime, per spec 05 §5 — NOT a pure-ruby range.
+        constraint: "~> 3.3.0"
+  platforms: [aarch64-macos]
+  capabilities: {exec: true, read: true}
+requires:
+  - kind: language
+    engine: ruby
+    constraint: "~> 3.3.0"

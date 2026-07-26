@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# tools/boot_smoke <image.tfs> — the release gate (conventions.md):
+# assert the entrypoint exists in the image and runs under a published
+# tebako runtime.
+#
+# Env: TFS (tfs CLI binary), DWARFSEXTRACT, RUNTIME (tebako runtime exe),
+#      SHIM (deploy-driver ruby shim produced by tools/build's stub press).
+set -euo pipefail
+
+IMG="${1:?usage: tools/boot_smoke <image.tfs>}"
+TFS="${TFS:-tfs}"
+DWARFSEXTRACT="${DWARFSEXTRACT:-dwarfsextract}"
+RUNTIME="${RUNTIME:-$HOME/.tebako/runtimes/ruby-3.3.7-0.15.9-macos-arm64/tebako-runtime-0.15.9-3.3.7-macos-arm64}"
+SHIM="${SHIM:-}"
+
+echo "== entrypoint assertions (in-process mount via libtfs)"
+"$TFS" stat "$IMG" /bin/fontist | grep -q File
+"$TFS" stat "$IMG" /local/stub.rb | grep -q File
+"$TFS" ls "$IMG" /lib/ruby/gems/3.3.0/gems | grep -q "fontist-3.0.10"
+echo "   /bin/fontist, /local/stub.rb, gem tree: present"
+
+echo "== extract round-trip"
+X="$(mktemp -d)"
+"$DWARFSEXTRACT" -i "$IMG" -o "$X" --log-level warn
+[ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
+
+echo "== exec fontist --version with a published tebako runtime"
+if [ -n "$SHIM" ]; then
+  cat > "$X/run.rb" <<RB
+ARGV.replace(["--version"])
+load "$X/bin/fontist"
+RB
+  TEBAKO_PASS_THROUGH=1 "$SHIM" "$X/run.rb" | grep "fontist: 3.0.10"
+else
+  echo "   SHIM unset — skipping exec leg (run tools/build first, then"
+  echo "   SHIM=out/work-aarch64-macos/prefix/o/p/ruby tools/boot_smoke ...)"
+fi
+echo "BOOT-SMOKE-OK"

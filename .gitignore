@@ -1,0 +1,3 @@
+out/
+*.gem
+.DS_Store

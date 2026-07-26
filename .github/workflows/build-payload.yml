@@ -1,0 +1,70 @@
+name: build-payload
+# Feedstock build: recipe → matrix build → boot-smoke → release.
+# Conventions: docs/conventions.md in tebako-packages/index.
+# STATUS: deferred — the payload leg ran locally (docs/build-notes.md);
+# this workflow encodes the same steps but has not run yet.
+on:
+  push:
+    branches: [main]
+    tags: ["*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions: contents: write
+
+jobs:
+  build:
+    name: aarch64-macos
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@11bd7190a326750d5838078e36cf38b85af6772621 # v4.2.2
+
+      - name: Build tebako-cli (tamatebako/tebako-rs, pinned)
+        run: |
+          git clone --depth 1 https://github.com/tamatebako/tebako-rs "$RUNNER_TEMP/tebako-rs"
+          cargo build --release --manifest-path "$RUNNER_TEMP/tebako-rs/Cargo.toml" -p tebako-cli -p tfs-cli
+          echo "$RUNNER_TEMP/tebako-rs/target/release" >> "$GITHUB_PATH"
+
+      - name: Fetch factory tools (tamatebako/libtfs v0.13.0, SHA256SUMS-verified)
+        run: |
+          mkdir -p "$RUNNER_TEMP/factory-tools" && cd "$RUNNER_TEMP/factory-tools"
+          base="https://github.com/tamatebako/libtfs/releases/download/v0.13.0"
+          curl -sLO "$base/SHA256SUMS"
+          curl -sLO "$base/mkdwarfs-macos-arm64"
+          curl -sLO "$base/tebakofs-macos-arm64"
+          grep -E "mkdwarfs-macos-arm64|tebakofs-macos-arm64" SHA256SUMS | shasum -a 256 -c -
+          chmod 755 mkdwarfs-macos-arm64 tebakofs-macos-arm64
+          echo "$RUNNER_TEMP/factory-tools" >> "$GITHUB_PATH"
+
+      - name: Build the payload
+        env:
+          TEBAKO_CLI: tebako
+          MKDWARFS: mkdwarfs-macos-arm64
+        run: tools/build
+
+      - name: Boot-smoke
+        env:
+          SHIM: out/work-aarch64-macos/prefix/o/p/ruby
+        run: tools/boot_smoke out/aarch64-macos/fontist-3.0.10-aarch64-macos.tfs
+
+      - name: Stage artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fontist-3.0.10-aarch64-macos
+          path: out/aarch64-macos/
+
+  release:
+    name: publish
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd7190a326750d5838078e36cf38b85af6772621 # v4.2.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8098 # v4.3.0
+        with:
+          name: fontist-3.0.10-aarch64-macos
+          path: out/aarch64-macos
+      - name: Publish payloads + registry
+        run: tools/publish 3.0.10
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
