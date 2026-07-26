@@ -203,7 +203,9 @@ Deferred to CI (`.github/workflows/build-payload.yml`): the same build on
 `macos-14`, boot-smoke gate, tag-triggered publish, and additional
 triplets (`x86_64-macos` first; linux triplets need the same closure
 re-resolved per triplet — brotli rebuild included). CI status: the
-workflow is triggered on push; the first runs failed on a workflow-file
-YAML issue (`permissions:` inline mapping — fixed in the repo after the
-index template got the same fix), and the full leg has not run green
-yet — treated as unproven until it does.
+workflow is triggered on push. Early runs failed on workflow-file issues
+(inline `permissions:` mapping; missing `dwarfs-rs` sibling clone;
+missing vcpkg/submodule recipe) — each fixed as found, the CLI-build
+step now mirrors tebako-rs's own `ci.yml` (recursive submodules, pinned
+vcpkg). The full leg has not run green yet (the cold vcpkg build alone
+is ~45 min) — treated as unproven until it does.
