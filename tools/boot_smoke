@@ -13,6 +13,14 @@ DWARFSEXTRACT="${DWARFSEXTRACT:-dwarfsextract}"
 RUNTIME="${RUNTIME:-$HOME/.tebako/runtimes/ruby-3.3.7-0.15.9-macos-arm64/tebako-runtime-0.15.9-3.3.7-macos-arm64}"
 SHIM="${SHIM:-}"
 
+extract() { # <image> <dest> — tfs extract preferred; dwarfsextract fallback
+  if command -v "$TFS" >/dev/null 2>&1; then
+    "$TFS" extract -d "$2" "$1"
+  else
+    "$DWARFSEXTRACT" -i "$1" -o "$2" --log-level warn
+  fi
+}
+
 echo "== entrypoint assertions (in-process mount via libtfs)"
 "$TFS" stat "$IMG" /bin/fontist | grep -q File
 "$TFS" stat "$IMG" /local/stub.rb | grep -q File
@@ -21,7 +29,7 @@ echo "   /bin/fontist, /local/stub.rb, gem tree: present"
 
 echo "== extract round-trip"
 X="$(mktemp -d)"
-"$DWARFSEXTRACT" -i "$IMG" -o "$X" --log-level warn
+extract "$IMG" "$X"
 [ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== exec fontist --version with a published tebako runtime"

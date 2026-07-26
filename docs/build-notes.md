@@ -187,9 +187,23 @@ on the press bundler path at all (it stages with `gem install`).
 ## 7. What ran vs what is deferred
 
 Ran (this machine, transcripts above): staging, brotli native build,
-payload image, all §5 verification, `gh release` publish.
+payload image, all §5 verification, and the publish itself —
 
-Deferred to CI (`.github/workflows/build-payload.yml`, **not yet run**):
-the same build on `macos-14`, boot-smoke gate, tag-triggered publish,
-and additional triplets (`x86_64-macos` first; linux triplets need the
-same closure re-resolved per triplet — brotli rebuild included).
+- Release: https://github.com/tebako-packages/fontist/releases/tag/3.0.10
+- `fontist-3.0.10-aarch64-macos.tfs` — 11 726 637 bytes,
+  sha256 `25dd5c74bc3581d361badf3b0be8fff72a5f110350ed9b48560b06d4704ea898`
+  (re-downloaded from the release and re-hashed; `tpkg-registry.yaml`
+  pinned to the same digest; `tebako-shim which fontist` resolves the
+  release asset through an installed payload record)
+- The committed `tools/build` reproduces the payload tree end-to-end
+  (stub press → SDK → verified gems → stage → tree); the release image
+  was built from that tree with the pinned libtfs mkdwarfs.
+
+Deferred to CI (`.github/workflows/build-payload.yml`): the same build on
+`macos-14`, boot-smoke gate, tag-triggered publish, and additional
+triplets (`x86_64-macos` first; linux triplets need the same closure
+re-resolved per triplet — brotli rebuild included). CI status: the
+workflow is triggered on push; the first runs failed on a workflow-file
+YAML issue (`permissions:` inline mapping — fixed in the repo after the
+index template got the same fix), and the full leg has not run green
+yet — treated as unproven until it does.
