@@ -103,7 +103,7 @@ jobs:
             mingw-w64-ucrt-x86_64-toolchain
 
       - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.1, sha256-pinned)
-        shell: msys2
+        shell: msys2 {0}
         run: |
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
           base="https://github.com/tamatebako/tebako/releases/download/v0.1.1"
@@ -117,7 +117,7 @@ jobs:
           echo "TEBAKO_TOOLS=$(cygpath -m "$RUNNER_TEMP/tebako-tools")" >> "$GITHUB_ENV"
 
       - name: Build the payload
-        shell: msys2
+        shell: msys2 {0}
         env:
           TRIPLET: x86_64-windows-ucrt
         run: |
@@ -132,7 +132,7 @@ jobs:
         # signature is accepted as green; a PASS or any other failure
         # mode is reported by tools/smoke_verdict (pass flips the gate,
         # anything else fails the leg).
-        shell: msys2
+        shell: msys2 {0}
         run: |
           . out/x86_64-windows-ucrt/runtime.env
           set +e

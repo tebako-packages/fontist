@@ -206,6 +206,9 @@ case "$TRIPLET" in
       || true
 
     step "brotli native build (in-process extconf + host make)"
+    # PKG_CONFIG_LIBDIR masks any system libbrotli so the gem builds its
+    # vendored sources (self-contained payload), same as the mac leg.
+    PKG_CONFIG_LIBDIR=/nonexistent \
     RUBYOPT="-r$(winpath "$WORK/sdk_patch.rb")" \
       run_driver /stage_brotli_manual.rb extconf
     (cd "$WORK/brotli-build/ext/brotli" && make -j"$(nproc 2>/dev/null || echo 4)")
