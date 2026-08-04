@@ -75,20 +75,19 @@ winpath() { # msys path → windows form for native exes / in-runtime ruby
 mkdir -p "$WORK" "$OUT" "$WORK/gempkgs"
 
 # ---------------------------------------------------------------- runtime
-step "resolve the tebako runtime $TEBAKO_VERSION (tebako-cli cache, manifest-verified)"
-# A stub press makes the CLI resolve the runtime AND, on POSIX, yields the
-# deploy-driver shim (o/p/ruby) used for every ruby invocation below.
-# The Gemfile forces the bundler deploy ops (a SimpleScript stub produces
-# no driver); base64 is dep-free and installs in seconds.
-mkdir -p "$WORK/stubapp"
-printf 'puts "stub"\n' > "$WORK/stubapp/stub.rb"
-printf 'source "https://rubygems.org"\ngem "base64"\n' > "$WORK/stubapp/Gemfile"
-"$TEBAKO_CLI" press -r "$WORK/stubapp" -e stub.rb -o "$WORK/stub-pkg" \
-  -p "$WORK/prefix" -l warn --tebako-version "$TEBAKO_VERSION"
-
+step "resolve the tebako runtime $TEBAKO_VERSION"
 case "$TRIPLET" in
   aarch64-macos)
     RT_PLATFORM="macos-arm64"
+    # A stub press makes the CLI resolve the runtime (manifest-verified)
+    # AND yields the deploy-driver shim (o/p/ruby) used for every ruby
+    # invocation below. The Gemfile forces the bundler deploy ops (a
+    # SimpleScript stub produces no driver); base64 is dep-free.
+    mkdir -p "$WORK/stubapp"
+    printf 'puts "stub"\n' > "$WORK/stubapp/stub.rb"
+    printf 'source "https://rubygems.org"\ngem "base64"\n' > "$WORK/stubapp/Gemfile"
+    "$TEBAKO_CLI" press -r "$WORK/stubapp" -e stub.rb -o "$WORK/stub-pkg" \
+      -p "$WORK/prefix" -l warn --tebako-version "$TEBAKO_VERSION"
     SHIM="$WORK/prefix/o/p/ruby"
     [ -x "$SHIM" ] || { echo "no deploy shim at $SHIM"; exit 1; }
     ;;
@@ -101,7 +100,34 @@ esac
 RT_DIR="$TEBAKO_HOME/runtimes/ruby-$RUBY_V-$TEBAKO_VERSION-$RT_PLATFORM"
 RT_EXE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
 RT_IMAGE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM.tfs"
-[ "$TRIPLET" = "x86_64-windows-ucrt" ] && RT_EXE="$RT_EXE.exe"
+
+if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
+  # Direct fetch, verified against the release's SHA256SUMS.txt (the
+  # resolver's own fallback index; tmp+rename, a partial download never
+  # poisons the cache). `tebako press` cannot run on windows today: its
+  # bootstrap resolution asks the tebako-bootstrap index for
+  # windows-ucrt64, but that release line still names its windows asset
+  # windows-x86_64 (exit 131) — and the windows leg needs no shim anyway
+  # (there is none on Windows).
+  RT_RELEASE_URL="https://github.com/tamatebako/tebako-runtime-ruby/releases/download/v$TEBAKO_VERSION"
+  RT_ASSET="tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
+  mkdir -p "$RT_DIR"
+  curl -sL -o "$WORK/SHA256SUMS.txt" "$RT_RELEASE_URL/SHA256SUMS.txt"
+  for f in "$RT_ASSET" "$RT_ASSET.tfs"; do
+    dst="$f"; [ "$f" = "$RT_ASSET" ] && dst="$f.exe"   # resolver cache naming
+    grep -E "  $(echo "$f" | sed 's/\./\\./g')\$" "$WORK/SHA256SUMS.txt" > "$WORK/expected.sha" \
+      || { echo "no SHA256SUMS entry for $f"; exit 1; }
+    if [ ! -f "$RT_DIR/$dst" ]; then
+      curl -sL -o "$RT_DIR/$dst.part" "$RT_RELEASE_URL/$f"
+      want="$(cut -d' ' -f1 < "$WORK/expected.sha")"
+      got="$(sha256_file "$RT_DIR/$dst.part")"
+      [ "$got" = "$want" ] || { rm -f "$RT_DIR/$dst.part"; echo "SHA256 MISMATCH $f"; exit 1; }
+      mv "$RT_DIR/$dst.part" "$RT_DIR/$dst"
+    fi
+  done
+  echo "runtime verified against tebako-runtime-ruby v$TEBAKO_VERSION SHA256SUMS"
+  RT_EXE="$RT_EXE.exe"
+fi
 [ -f "$RT_EXE" ] || { echo "no cached runtime at $RT_EXE"; exit 1; }
 [ -f "$RT_IMAGE" ] || { echo "no cached runtime image at $RT_IMAGE"; exit 1; }
 # the boot smoke reads these (tools/boot_smoke's exec leg)

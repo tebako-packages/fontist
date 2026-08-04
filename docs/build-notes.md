@@ -238,10 +238,15 @@ ships per-triplet with the ABI-line `runtime_requirement ~> 3.3.0`.
 
 - **Packager**: `tebako`/`tfs` windows binaries from tamatebako/tebako
   **release v0.1.1**, sha256-pinned in the workflow (v0.1.1 predates the
-  release's SHA256SUMS asset; digests recorded in §8.5). A stub
-  `tebako press --tebako-version 0.16.2` resolves the runtime
-  (`tebako-runtime-0.16.2-3.3.7-windows-ucrt64` + env `.tfs`,
-  manifest-verified by the CLI's resolver) into `TEBAKO_HOME`.
+  release's SHA256SUMS asset; digests recorded in §8.5). The runtime
+  (`tebako-runtime-0.16.2-3.3.7-windows-ucrt64` + env `.tfs`) is fetched
+  directly and verified against the tebako-runtime-ruby release
+  SHA256SUMS.txt — the resolver's own fallback index — because
+  `tebako press` cannot run on windows today: its bootstrap resolution
+  asks the tebako-bootstrap index for `windows-ucrt64`, but that release
+  line still names its windows asset `windows-x86_64` (exit 131; the
+  same rename the runtime line already went through). No shim is needed
+  on this leg anyway (there is none on Windows).
 - **Staging without a shim**: the deploy-driver ruby shim the mac leg
   stages through is **POSIX-only by construction** (tebako-cli
   `deploy.rs`: the shim is a `#!/bin/sh` re-entry script; a Windows shape
