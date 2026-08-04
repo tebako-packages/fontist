@@ -228,8 +228,10 @@ case "$TRIPLET" in
     # rubygems' ExtConfBuilder cannot run on Windows (no shim, no memfs
     # spawn): precompiled gems install fine, brotli is skipped here and
     # built manually below.
-    BROTLI_MANUAL=1 run_driver /stage_app.rb 2>&1 | grep -E "STAGE-OK|ERROR" \
-      || true
+    BROTLI_MANUAL=1 run_driver /stage_app.rb > "$WORK/stage.log" 2>&1 || true
+    grep -q "STAGE-OK" "$WORK/stage.log" \
+      || { echo "staging failed:"; tail -30 "$WORK/stage.log"; exit 1; }
+    grep -E "STAGE-OK|installed" "$WORK/stage.log" | tail -3
 
     step "brotli native build (in-process extconf + host make)"
     # PKG_CONFIG_LIBDIR masks any system libbrotli so the gem builds its
