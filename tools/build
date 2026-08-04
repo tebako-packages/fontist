@@ -203,8 +203,10 @@ case "$TRIPLET" in
          "$SDK/include/ruby-$API_V/x64-mingw-ucrt/ruby/config.h"
       # The import library: the runtime factory's own mechanism (dlltool
       # --export-all over the static libruby; the produced extensions
-      # import "ruby.exp.dll" like the runtime's own).
-      STATIC_LIB="$(find "$WORK/ruby-build" -name 'libruby*-static.a' | head -1)"
+      # import "ruby.exp.dll" like the runtime's own). The archive name
+      # follows lib$(RUBY_SO_NAME)-static.a — on mingw that is
+      # libx64-ucrt-ruby330-static.a (no "libruby" prefix).
+      STATIC_LIB="$(find "$WORK/ruby-build" -name 'lib*-static.a' | head -1)"
       if [ -z "$STATIC_LIB" ]; then
         tail -30 "$WORK/ruby-build/make.log"
         echo "no static libruby under $WORK/ruby-build — the build failed before the archive"
