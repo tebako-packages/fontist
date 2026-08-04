@@ -232,10 +232,12 @@ case "$TRIPLET" in
     "$TFS" mkimage --format dwarfs "$DRIVER" -o "$DRIVER_IMG"
 
     run_driver() { # <entry> [args...]
-      # NB: --flag=value forms. MSYS2 path-converts bare POSIX-looking
-      # argv ("/stage_app.rb" → "D:/.../msys64/stage_app.rb"); the entry
-      # is a VFS path and must reach the driver verbatim.
+      # NB: MSYS2_ARG_CONV_EXCL='*' — MSYS2 path-converts POSIX-looking
+      # argv ("/stage_app.rb" → "D:/.../msys64/stage_app.rb", even in
+      # --flag=value form); the entry is a VFS path and must reach the
+      # driver verbatim.
       local entry="$1"; shift
+      MSYS2_ARG_CONV_EXCL='*' \
       TEBAKO_PASS_THROUGH=1 \
       TEBAKO_RUNTIME_IMAGE="$(winpath "$RT_IMAGE")" \
       GEM_HOME="$(winpath "$WORK/stage")" GEM_PATH="$(winpath "$WORK/stage")" \
