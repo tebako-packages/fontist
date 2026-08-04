@@ -179,7 +179,8 @@ case "$TRIPLET" in
       mkdir -p "$WORK/ruby-src" "$WORK/ruby-build"
       tar xzf "$WORK/ruby.tar.gz" -C "$WORK/ruby-src" --strip-components=1
       (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
-          --disable-shared --disable-install-doc > configure.log 2>&1)
+          --disable-shared --disable-install-doc \
+          cppflags="-Wno-incompatible-pointer-types" > configure.log 2>&1)
       (cd "$WORK/ruby-build" && make -j"$(nproc 2>/dev/null || echo 4)" \
           > make.log 2>&1 || { tail -30 make.log; exit 1; })
       cp -R "$WORK/ruby-src/include/." "$SDK/include/ruby-$API_V/"
