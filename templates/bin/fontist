@@ -8,7 +8,33 @@
 # own location instead of being baked in. The language runtime's default
 # gem dir (its own image) supplies the default gems this closure relies on
 # (json, bigdecimal, strscan, racc, rexml, ... — see docs/build-notes.md).
-root = File.expand_path("..", __dir__)
+
+# Windows mount-addressing (provisional, until the runtime grows a
+# convention): the mount triple grammar cannot carry a drive-letter mount
+# point, so the payload mounts at "/" — but ruby on windows re-roots
+# drive-relative absolute paths onto the cwd drive (File.expand_path) or
+# the GetFullPathNameW answer (File.realpath), both of which would escape
+# the VFS ("D:/lib/..." is a host path). Keep VFS-rooted paths literal:
+# the VFS owns the "/" namespace and holds no symlinks, so the literal
+# form IS the resolved form. Host paths (A:/t, drive letters, relatives)
+# keep the real semantics.
+if RUBY_PLATFORM =~ /mingw|mswin/
+  class << File
+    alias_method :__tebako_payload_expand_path, :expand_path
+    alias_method :__tebako_payload_realpath, :realpath
+    def expand_path(path, base = nil)
+      path.start_with?("/") ? path : __tebako_payload_expand_path(path, base)
+    end
+
+    def realpath(path)
+      path.start_with?("/") ? path : __tebako_payload_realpath(path)
+    end
+  end
+end
+
+# File.expand_path("..", __dir__) would already re-root "/bin" onto the
+# cwd drive on windows; File.dirname stays lexical.
+root = File.dirname(__dir__)
 gem_dir = File.join(root, "lib/ruby/gems/3.3.0")
 
 ENV["GEM_HOME"] = gem_dir

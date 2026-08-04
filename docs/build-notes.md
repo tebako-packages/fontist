@@ -280,7 +280,32 @@ ships per-triplet with the ABI-line `runtime_requirement ~> 3.3.0`.
   `x64-mingw-ucrt` variants (`/info` checksums). Imaging: `tfs mkimage`
   (the release CLI's in-process Writer; no libtfs download on this leg).
 
-### 8.3 The blocker: windows runtimes load no dynamic native extensions
+### 8.3 Runtime-layer gaps found by this leg
+
+### 8.3a Mount addressing on windows (payload-side workaround carried)
+
+Two more windows-runtime-layer gaps the leg stepped over; both are
+documented for the factory track (tamatebako/tebako-runtime-ruby#40):
+
+- **Drive re-rooting.** ruby on windows re-roots drive-relative absolute
+  paths onto the cwd drive (`File.expand_path`) or the
+  `GetFullPathNameW` answer (`File.realpath` — rubygems' PathSupport
+  calls it on every gem path). A payload mounted at `/` escapes the VFS
+  the moment ruby computes on its paths (`/lib/...` → `D:/lib/...`, a
+  host path — observed in CI as `Could not find 'fontist' (= 3.0.10) ...
+  Checked in 'GEM_PATH=D:/lib/ruby/gems/3.3.0'`). The mount triple
+  grammar cannot carry a drive-letter mount (colons split file:slot:mount
+  — `A:/p` parses as slot `A`), so the entrypoint wrapper keeps
+  VFS-rooted paths literal instead (templates/bin/fontist guards
+  `expand_path`/`realpath` for `/`-rooted inputs; host paths keep real
+  semantics). This is provisional until the runtime/shim defines the
+  windows mount-addressing convention.
+- **`tebako press` bootstrap index.** The CLI's bootstrap resolution asks
+  the tebako-bootstrap index for `windows-ucrt64`; that release line
+  still names its windows asset `windows-x86_64` (exit 131). The leg
+  fetches the runtime directly (SHA256SUMS-verified).
+
+### 8.3b The publication blocker: windows runtimes load no dynamic native extensions
 
 The build above is green, but the boot smoke **cannot pass** against the
 published windows runtimes. Evidence (runtime 0.16.2, 3.3.7):
