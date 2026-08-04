@@ -27,7 +27,11 @@ echo "   /bin/fontist, /local/stub.rb, gem tree: present"
 
 echo "== extract round-trip"
 X="$(mktemp -d)"
-"$TFS" extract -d "$X" "$IMG"
+# the extract dest is a HOST path for the native tool: with conversion
+# shielded (above), hand it the windows form explicitly (inert on POSIX)
+XDEST="$X"
+command -v cygpath >/dev/null 2>&1 && XDEST="$(cygpath -m "$X")"
+"$TFS" extract -d "$XDEST" "$IMG"
 [ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== exec fontist --version with a published tebako runtime"
