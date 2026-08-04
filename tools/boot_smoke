@@ -14,6 +14,11 @@ TFS="${TFS:-tfs}"
 RUNTIME="${RUNTIME:?set RUNTIME to the tebako runtime exe}"
 RUNTIME_IMAGE="${RUNTIME_IMAGE:?set RUNTIME_IMAGE to the runtime env .tfs}"
 
+# Under MSYS2 every VFS-path argv element ("/bin/fontist" & co., incl.
+# --flag=value forms) would be path-converted to a host path; native
+# tools must see them verbatim. Inert on POSIX.
+export MSYS2_ARG_CONV_EXCL='*'
+
 echo "== entrypoint assertions (in-process mount via libtfs)"
 "$TFS" stat "$IMG" /bin/fontist | grep -q File
 "$TFS" stat "$IMG" /local/stub.rb | grep -q File
@@ -26,10 +31,7 @@ X="$(mktemp -d)"
 [ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== exec fontist --version with a published tebako runtime"
-# NB: --flag=value forms + MSYS2_ARG_CONV_EXCL — under MSYS2 a POSIX-
-# looking argv element ("/bin/fontist") would be path-converted to a
-# host path; the entry is a VFS path.
-MSYS2_ARG_CONV_EXCL='*' TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
   "$RUNTIME" "--tebako-image=$IMG:-:/" "--tebako-entry=/bin/fontist" --version \
   | grep "fontist: 3.0.10"
 echo "BOOT-SMOKE-OK"
