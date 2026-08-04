@@ -270,6 +270,11 @@ ships per-triplet with the ABI-line `runtime_requirement ~> 3.3.0`.
   generated from the built static libruby via `dlltool --export-all` —
   the runtime factory's own mechanism, so the extension imports
   `ruby.exp.dll`, the same module name the runtime's own extensions use.
+  Two build-on-current-msys2 fixes ride along: `-Wno-incompatible-pointer-types`
+  (GCC ≥ 14 errors on ruby's ANYARGS idiom; the factory's configure
+  carries the same flag) and the factory's `win32_clock_rename_msys`
+  patch (ruby's clock fallbacks vs winpthreads headers), fetched pinned
+  from the tamatebako/ruby tag at build time.
 - **Closure**: `closure/3.0.10-x86_64-windows-ucrt.txt` — the mac
   resolution with the two precompiled natives swapped for their
   `x64-mingw-ucrt` variants (`/info` checksums). Imaging: `tfs mkimage`
