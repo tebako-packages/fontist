@@ -282,7 +282,7 @@ ships per-triplet with the ABI-line `runtime_requirement ~> 3.3.0`.
 
 ### 8.3 Runtime-layer gaps found by this leg
 
-### 8.3a Mount addressing on windows (payload-side workaround carried)
+### 8.3a Mount addressing on windows (G1 — only partly payload-guardable)
 
 Two more windows-runtime-layer gaps the leg stepped over; both are
 documented for the factory track (tamatebako/tebako-runtime-ruby#40):
@@ -297,9 +297,19 @@ documented for the factory track (tamatebako/tebako-runtime-ruby#40):
   grammar cannot carry a drive-letter mount (colons split file:slot:mount
   — `A:/p` parses as slot `A`), so the entrypoint wrapper keeps
   VFS-rooted paths literal instead (templates/bin/fontist guards
-  `expand_path`/`realpath` for `/`-rooted inputs; host paths keep real
-  semantics). This is provisional until the runtime/shim defines the
-  windows mount-addressing convention.
+  `expand_path`/`realpath` for `/`-rooted paths AND bases; host paths
+  keep real semantics). That carries boot through gem activation, bin
+  resolution, and the exe load — all served from the VFS.
+- **The C-level wall (not payload-fixable).** `require` expands each
+  load-path candidate with `rb_file_expand_path_internal` at the C
+  level, where no Ruby-level guard can intercept — drive-relative VFS
+  paths re-root to the cwd drive and the require dies
+  (`cannot load such file -- fontist`, CI run 30943878927). The
+  runtime's `ruby_c_memfs_path_msys` patch shields only the compiled-in
+  initial load path (`A:/t`, drive-qualified, never re-rooted). Until
+  the runtime/shim defines the windows mount-addressing convention (a
+  drive-letter mount form in the grammar, or VFS-aware path expansion —
+  tamatebako/tebako#365), payload exec on windows stops here.
 - **`tebako press` bootstrap index.** The CLI's bootstrap resolution asks
   the tebako-bootstrap index for `windows-ucrt64`; that release line
   still names its windows asset `windows-x86_64` (exit 131). The leg

@@ -1,18 +1,29 @@
 #!/usr/bin/env bash
 # tools/smoke_verdict <rc> <log> — the windows leg's pinned boot-smoke
 # verdict. The exec gate (tools/boot_smoke) currently CANNOT pass on
-# windows-ucrt64: the published runtimes load no dynamically linked native
-# extension (the interpreter is --disable-shared/--with-static-linked-ext,
-# exports no symbols, and ships no ruby DLL — nokogiri/ffi/brotli .so
-# files have nothing to bind to; docs/build-notes.md § Windows). This
-# verdict pins exactly that failure signature: green only for the known
-# state, loud for every drift.
+# windows-ucrt64, for two independent RUNTIME-LAYER reasons (neither is
+# fixable in this feedstock; docs/build-notes.md §8.3):
 #
-#   rc == 0                  → the gap is CLOSED: enforce the gate (make
-#                              boot_smoke a hard gate, wire the windows
-#                              artifact into tools/publish + registry).
-#   rc != 0 + known pattern  → the documented blocker; the leg stays
-#                              green but the artifact must not publish.
+#   G1 mount addressing — ruby on windows re-roots drive-relative paths
+#      (the only kind a payload mount can be, the triple grammar taking
+#      no drive letter) onto the cwd drive at the C level, so requires
+#      from the payload escape the VFS (fails as
+#      "cannot load such file -- fontist").
+#   G2 no dynamic native extensions — the interpreter is
+#      --disable-shared/--with-static-linked-ext, exports no symbols,
+#      and ships no ruby DLL, so nokogiri/ffi/brotli .so files have
+#      nothing to bind to (would fail as
+#      "cannot load such file -- nokogiri/nokogiri" once G1 is fixed).
+#
+# This verdict pins exactly those signatures: green only for the known
+# states, loud for every drift.
+#
+#   rc == 0                  → the gaps are CLOSED: enforce the gate
+#                              (make boot_smoke a hard gate, wire the
+#                              windows artifact into tools/publish +
+#                              tpkg-registry.yaml).
+#   rc != 0 + known pattern  → a documented gap; the leg stays green but
+#                              the artifact must not publish.
 #   anything else            → an undiagnosed failure: RED.
 set -euo pipefail
 
@@ -20,22 +31,23 @@ rc="${1:?usage: tools/smoke_verdict <rc> <log>}"
 log="${2:?usage: tools/smoke_verdict <rc> <log>}"
 
 if [ "$rc" -eq 0 ]; then
-  echo "BOOT SMOKE PASSED on windows-ucrt64 — the runtime-layer gap is"
-  echo "closed (a symbol provider shipped in the runtime). NEXT: make"
+  echo "BOOT SMOKE PASSED on windows-ucrt64 — the runtime-layer gaps are"
+  echo "closed (mount addressing + a symbol provider shipped). NEXT: make"
   echo "tools/boot_smoke a hard gate on the windows leg and wire the"
   echo "artifact into tools/publish + tpkg-registry.yaml."
   exit 0
 fi
 
-if grep -q "LoadError" "$log" && grep -qiE "nokogiri|ffi|brotli" "$log"; then
-  echo "::notice::KNOWN BLOCKER (windows runtime layer): the runtime cannot"
-  echo "load dynamically linked native extensions — no symbol provider in"
-  echo "the interpreter exe, no ruby DLL in the release. The windows payload"
-  echo "build is green; execution awaits the factory fix. See"
-  echo "docs/build-notes.md § Windows for the evidence and the fix shape."
+if grep -q "LoadError" "$log" && grep -qiE "cannot load such file -- (fontist|nokogiri|ffi|brotli)" "$log"; then
+  echo "::notice::KNOWN BLOCKER (windows runtime layer): payload exec on"
+  echo "windows-ucrt64 is gated by the mount-addressing gap (G1: C-level"
+  echo "re-rooting of drive-relative paths out of the VFS) and, behind it,"
+  echo "the missing symbol provider for dynamic native extensions (G2)."
+  echo "The windows payload BUILD is green; execution awaits the runtime"
+  echo "fixes. See docs/build-notes.md § Windows for the evidence."
   exit 0
 fi
 
-echo "BOOT SMOKE failed in an UNRECOGNIZED way (rc=$rc) — this is not the"
-echo "pinned runtime-layer blocker. Full log above."
+echo "BOOT SMOKE failed in an UNRECOGNIZED way (rc=$rc) — this is not one"
+echo "of the pinned runtime-layer gaps. Full log above."
 exit 1
