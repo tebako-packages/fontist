@@ -1,0 +1,22 @@
+# Preloaded (RUBYOPT) into the runtime-ruby process that runs brotli's
+# extconf.rb in-process (windows leg — tools/stage_brotli_manual.rb).
+# The tebako windows runtime image carries no ruby headers and no import
+# library; point mkmf at the SDK header tree (assembled by tools/build from
+# the pinned ruby source tarball, configured for x64-mingw-ucrt) and at the
+# import library generated from the SDK's static libruby (dlltool
+# --export-all, the runtime factory's own mechanism — the produced
+# extension imports "ruby.exp.dll", the same module name the runtime's own
+# extensions use). @@SDK_INCLUDE@@ and @@IMPLIB@@ are substituted by
+# tools/build.
+unless defined?(TG_SDK_PATCHED)
+  TG_SDK_PATCHED = true
+  sdk = "@@SDK_INCLUDE@@"
+  implib = "@@IMPLIB@@"
+  [RbConfig::CONFIG, RbConfig::MAKEFILE_CONFIG].each do |c|
+    c["rubyhdrdir"] = sdk
+    c["rubyarchhdrdir"] = File.join(sdk, "x64-mingw-ucrt")
+    c["LIBRUBYARG"] = implib
+    c["LIBRUBYARG_STATIC"] = implib
+    c["LIBRUBYARG_SHARED"] = implib
+  end
+end

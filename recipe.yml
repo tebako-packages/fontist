@@ -17,9 +17,14 @@ build:
   runtime:
     engine: ruby
     version: "3.3.7"       # the staging + exec runtime (tebako-runtime-ruby)
-    tebako: "0.15.9"       # runtime release line
-  # mkmf SDK for the one source-built native dep (brotli): headers of the
-  # exact ruby the runtime ships (the runtime image carries none).
+    tebako: "0.16.2"       # runtime release line (image-era; the v0.1.1 CLI
+                           # refuses pre-era releases by contract, exit 75)
+  # The tebako CLI (>= v0.1.1) provisions the runtime SDK itself on POSIX
+  # (headers + symbol stub for the exact runtime) — no feedstock-side SDK
+  # on the mac leg. The windows leg builds brotli's extension against an
+  # SDK assembled from this pinned tarball (tools/build; mkmf on mingw
+  # also needs an import library, generated from the built static libruby
+  # with dlltool — the runtime factory's own mechanism).
   sdk:
     url: "https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.7.tar.gz"
     sha256: "9c37c3b12288c7aec20ca121ce76845be5bb5d77662a24919651aaf1d12c8628"
@@ -34,6 +39,8 @@ build:
 # Factory tools used by tools/build (image creation). The dwarfs-t
 # mkdwarfs/tebakofs binaries ship as per-platform assets of libtfs
 # releases; every download is verified against the release's SHA256SUMS.
+# (mac leg images with mkdwarfs; the windows leg images with the tfs CLI
+# from the tebako release — same Writer, in-process.)
 tools:
   repo: "tamatebako/libtfs"
   release: "v0.13.0"
@@ -41,6 +48,9 @@ tools:
 platforms:
   - aarch64-macos          # triplet-bound (nokogiri/ffi precompiled, brotli
                            # compiled per-triplet). More triplets: CI legs.
+  - x86_64-windows-ucrt    # built by CI (green incl. brotli); NOT published
+                           # yet — the windows runtimes cannot load dynamic
+                           # native extensions (docs/build-notes.md § Windows)
 
 provides:
   entrypoints:

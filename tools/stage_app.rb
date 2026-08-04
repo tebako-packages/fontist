@@ -31,6 +31,10 @@ gempkgs = ENV.fetch("GEMPKGS_DIR")
 require "rubygems/gem_runner"
 Dir[File.join(gempkgs, "*.gem")].sort.each do |gem_file|
   base = File.basename(gem_file)
+  # windows leg: brotli is built and installed by tools/stage_brotli_manual.rb
+  # (no ruby shim / no memfs spawn on Windows — rubygems' ExtConfBuilder
+  # subprocess cannot run there).
+  next if ENV["BROTLI_MANUAL"] && base.start_with?("brotli-")
   argv = ["install", gem_file, "--local", "--ignore-dependencies",
           "--no-document", "--install-dir", stage,
           "--bindir", File.join(stage, "bin")]
