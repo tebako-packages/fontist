@@ -5,7 +5,10 @@ Feedstock for **fontist** — the first `kind: app` payload of the
 self-contained `kind: toolkit` payloads).
 
 - Upstream: [fontist](https://github.com/fontist/fontist) 3.0.10 (RubyGems)
-- Payload: `fontist-3.0.10-aarch64-macos.tfs` (DwarFS image, per-triplet)
+- Payload: `fontist-3.0.10-aarch64-macos.tfs` (DwarFS image, per-triplet);
+  an `x86_64-windows-ucrt` leg builds in CI but does not publish yet
+  (the windows runtimes load no dynamic native extensions —
+  `docs/build-notes.md` § Windows)
 - Registry: `tfs:github:tebako-packages/fontist` (see `tpkg-registry.yaml`)
 
 ## Layout

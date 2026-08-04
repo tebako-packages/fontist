@@ -1,8 +1,17 @@
 # fontist feedstock — build notes
 
-Everything a reviewer needs to reproduce or extend the `3.0.10` /
-`aarch64-macos` payload: what the dependency tree looks like, how the
-build is self-hosted, what was proven, and what is deferred.
+Everything a reviewer needs to reproduce or extend the `3.0.10` payloads:
+what the dependency tree looks like, how the build is self-hosted, what
+was proven, and what is deferred.
+
+> **Era note (2026-08-05).** The legs now build with the **released
+> tebako CLI v0.1.1** (pinned, sha256-pinned in the workflow) against the
+> **image-era runtime line 0.16.2** — the 0.15.9-era flow described in
+> §2–§6 below (from-source CLI build, feedstock-side SDK, `sdk_patch.rb`,
+> 0.15.9 shim shape) is superseded: the CLI provisions the runtime SDK
+> itself on POSIX, and the v0.1.1 resolver refuses pre-era runtimes by
+> contract (exit 75). § Windows describes the second leg and the runtime
+> blocker that gates its publication.
 
 ## 1. Dependency-tree verdict: **triplet-bound**
 
@@ -209,3 +218,116 @@ missing vcpkg/submodule recipe) — each fixed as found, the CLI-build
 step now mirrors tebako-rs's own `ci.yml` (recursive submodules, pinned
 vcpkg). The full leg has not run green yet (the cold vcpkg build alone
 is ~45 min) — treated as unproven until it does.
+
+## 8. Windows leg (`x86_64-windows-ucrt`) — build green, publication gated at the runtime layer
+
+### 8.1 Platform key
+
+The payload platform axis is the spec 03 §3 vcpkg-triplet vocabulary
+(`tpkg::Platform` in tamatebako/tebako is the single owner): the windows
+leg is **`x86_64-windows-ucrt`** — the same GNU-style form as the existing
+`aarch64-macos`. `windows-ucrt64` is the *release-asset-name* form of the
+same platform and appears only in tool/runtime artifact names
+(`tebako-0.1.1-windows-ucrt64.exe`,
+`tebako-runtime-0.16.2-3.3.7-windows-ucrt64`). `universal` is NOT
+available: §1 — the closure carries native extensions (nokogiri, ffi
+precompiled per platform; brotli compiled per triplet), so the payload
+ships per-triplet with the ABI-line `runtime_requirement ~> 3.3.0`.
+
+### 8.2 The leg (mirrors the mac leg, one shell branch per divergence)
+
+- **Packager**: `tebako`/`tfs` windows binaries from tamatebako/tebako
+  **release v0.1.1**, sha256-pinned in the workflow (v0.1.1 predates the
+  release's SHA256SUMS asset; digests recorded in §8.5). A stub
+  `tebako press --tebako-version 0.16.2` resolves the runtime
+  (`tebako-runtime-0.16.2-3.3.7-windows-ucrt64` + env `.tfs`,
+  manifest-verified by the CLI's resolver) into `TEBAKO_HOME`.
+- **Staging without a shim**: the deploy-driver ruby shim the mac leg
+  stages through is **POSIX-only by construction** (tebako-cli
+  `deploy.rs`: the shim is a `#!/bin/sh` re-entry script; a Windows shape
+  is explicitly refused) and the memfs-exec spawn patch is POSIX-only
+  too. The windows leg therefore runs its staging scripts as **entries of
+  a purpose-built driver image**: `tfs mkimage` a dir with
+  `stage_app.rb`/`stage_brotli_manual.rb`, then
+  `rt.exe --tebako-image driver.tfs:-:/drv --tebako-entry /stage_app.rb`
+  with `TEBAKO_RUNTIME_IMAGE=<env.tfs>` + `TEBAKO_PASS_THROUGH=1` (the
+  spec 17 bare-image grammar; no tpkg trailer needed).
+- **brotli** (the one source-only native): rubygems' ExtConfBuilder
+  spawns `Gem.ruby` — impossible on Windows (no shim, no memfs spawn).
+  `tools/stage_brotli_manual.rb` instead runs `extconf.rb` **in-process**
+  (`$0` pinned to `extconf.rb` — mkmf anchors srcdir/TARGET on it), the
+  host runs `make` (ucrt64 gcc), and the script installs the `.so` the
+  way rubygems would (gem tree, `spec.to_ruby` stub, extensions
+  bookkeeping with `Gem::Platform.local`, `gem.build_complete`).
+  Validated on macOS arm64: the placed brotli loads and round-trips.
+- **mkmf inputs**: headers from the recipe-pinned ruby 3.3.7 tarball
+  (configure'd for x64-mingw-ucrt under MSYS2) and an **import library**
+  generated from the built static libruby via `dlltool --export-all` —
+  the runtime factory's own mechanism, so the extension imports
+  `ruby.exp.dll`, the same module name the runtime's own extensions use.
+- **Closure**: `closure/3.0.10-x86_64-windows-ucrt.txt` — the mac
+  resolution with the two precompiled natives swapped for their
+  `x64-mingw-ucrt` variants (`/info` checksums). Imaging: `tfs mkimage`
+  (the release CLI's in-process Writer; no libtfs download on this leg).
+
+### 8.3 The blocker: windows runtimes load no dynamic native extensions
+
+The build above is green, but the boot smoke **cannot pass** against the
+published windows runtimes. Evidence (runtime 0.16.2, 3.3.7):
+
+1. `tebako-runtime-0.16.2-3.3.7-windows-ucrt64` is a static ruby
+   (`configure_args` in the image's rbconfig: `--disable-shared
+   --with-static-linked-ext`). Its PE has **no export table** (0 exports)
+   and imports only system DLLs — there is no symbol provider a native
+   extension could bind to.
+2. The release ships **no ruby DLL** — not as an asset, not inside the
+   env image (`tfs find rt.tfs '*.dll'` → nothing). The image's own
+   three dynamic extensions (`debug`, `racc/cparse`, `rbs_extension`)
+   import **`ruby.exp.dll`** (the `dlltool` default from the factory's
+   `gnumakefile_in_pass2_msys` patch) — a module that exists nowhere, so
+   they cannot load either; all three are gems with pure-ruby fallbacks,
+   which is why the gap is invisible in the factory boot smoke.
+3. Precompiled windows gems are equally dead: `nokogiri-...-x64-mingw-ucrt`'s
+   `.so` imports `x64-msvcrt-ruby330.dll` (the RubyInstaller ABI name) —
+   also absent.
+4. Confirmed the failure is payload-visible: with the native `.so`s made
+   unloadable in the *macOS* payload (same gem set), even
+   `fontist --version` dies —
+   `Moxml::AdapterError: Failed to load nokogiri adapter ... LoadError:
+   cannot load such file -- nokogiri/nokogiri` (`require "lutaml/model"`
+   at fontist boot loads moxml's nokogiri adapter). The windows CI leg
+   reproduces the same signature natively; `tools/smoke_verdict` pins it.
+
+**Fix shape (runtime factory, not this feedstock):** give the windows
+runtime a symbol provider — link the `ruby.exp` export object into the
+interpreter exe (the pass-2 GNUmakefile already generates it via
+`dlltool --output-exp`; it is just never linked) and ship a
+`ruby.exp.dll`-named forwarding alias + import library for payload-time
+builds, plus an `x64-msvcrt-ruby330.dll` alias if precompiled
+RubyInstaller gems should load. Until then the windows leg stays
+build-only: `tools/smoke_verdict` turns exactly the known LoadError
+signature green, fails any other failure mode, and **no windows artifact
+is published** (the publish job needs only the mac leg; the registry
+gains the windows entry when the gate is enforced).
+
+### 8.4 What a linux leg would take
+
+Structurally trivial now: `closure/3.0.10-x86_64-linux-gnu.txt` (mac
+resolution with `ffi`/`nokogiri` swapped for their `x86_64-linux-gnu`
+variants; brotli source-built like the mac leg — the shim flow works
+unchanged on POSIX), one workflow job on `ubuntu-24.04` with the
+`linux-gnu-x86_64` v0.1.1 tools, `TRIPLET=x86_64-linux-gnu`. The
+`tools/build` case statement grows one arm (same staging family as mac;
+imaging via `tfs mkimage` or the libtfs mkdwarfs linux asset).
+
+### 8.5 Tool provenance (this era)
+
+| tool | source | sha256 |
+|------|--------|--------|
+| `tebako-0.1.1-windows-ucrt64.exe` | tamatebako/tebako v0.1.1 | `9cd4f2e0922acb776797a284f2f3ea1448f93c228c92e84b0f1f7a322857c2b8` |
+| `tfs-0.1.1-windows-ucrt64.exe` | tamatebako/tebako v0.1.1 | `82ed22135321449c81530e1fabeba73555195ea411e0d9cca4458a23fe5ad01c` |
+| `tebako-0.1.1-macos-arm64` | tamatebako/tebako v0.1.1 | `025fdf6948ab678895004349c7ada9c4a13676de5d1eb71bdac40dedcae73d84` |
+| `tfs-0.1.1-macos-arm64` | tamatebako/tebako v0.1.1 | `b1848bda4d12ec520faa682adf293f58e07ba6fedc28e373911cff24e56fe412` |
+| runtime (both legs) | tebako-runtime-ruby v0.16.2, ruby 3.3.7 | release manifest (CLI-verified) |
+| `mkdwarfs-macos-arm64` (mac imaging) | tamatebako/libtfs v0.13.0 | release SHA256SUMS |
+| ruby SDK tarball (windows brotli) | cache.ruby-lang.org | `9c37c3b1…8628` (recipe pin) |

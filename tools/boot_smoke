@@ -3,23 +3,16 @@
 # assert the entrypoint exists in the image and runs under a published
 # tebako runtime.
 #
-# Env: TFS (tfs CLI binary), DWARFSEXTRACT, RUNTIME (tebako runtime exe),
-#      SHIM (deploy-driver ruby shim produced by tools/build's stub press).
+# Env: TFS (tfs CLI binary), RUNTIME (tebako runtime exe), RUNTIME_IMAGE
+#      (the runtime's env .tfs). The exec leg uses the spec 17 driver
+#      handoff directly (image-era runtime ABI): the payload mounts bare
+#      at "/", the env image rides TEBAKO_RUNTIME_IMAGE.
 set -euo pipefail
 
 IMG="${1:?usage: tools/boot_smoke <image.tfs>}"
 TFS="${TFS:-tfs}"
-DWARFSEXTRACT="${DWARFSEXTRACT:-dwarfsextract}"
-RUNTIME="${RUNTIME:-$HOME/.tebako/runtimes/ruby-3.3.7-0.15.9-macos-arm64/tebako-runtime-0.15.9-3.3.7-macos-arm64}"
-SHIM="${SHIM:-}"
-
-extract() { # <image> <dest> — tfs extract preferred; dwarfsextract fallback
-  if command -v "$TFS" >/dev/null 2>&1; then
-    "$TFS" extract -d "$2" "$1"
-  else
-    "$DWARFSEXTRACT" -i "$1" -o "$2" --log-level warn
-  fi
-}
+RUNTIME="${RUNTIME:?set RUNTIME to the tebako runtime exe}"
+RUNTIME_IMAGE="${RUNTIME_IMAGE:?set RUNTIME_IMAGE to the runtime env .tfs}"
 
 echo "== entrypoint assertions (in-process mount via libtfs)"
 "$TFS" stat "$IMG" /bin/fontist | grep -q File
@@ -29,18 +22,11 @@ echo "   /bin/fontist, /local/stub.rb, gem tree: present"
 
 echo "== extract round-trip"
 X="$(mktemp -d)"
-extract "$IMG" "$X"
+"$TFS" extract -d "$X" "$IMG"
 [ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== exec fontist --version with a published tebako runtime"
-if [ -n "$SHIM" ]; then
-  cat > "$X/run.rb" <<RB
-ARGV.replace(["--version"])
-load "$X/bin/fontist"
-RB
-  TEBAKO_PASS_THROUGH=1 "$SHIM" "$X/run.rb" | grep "fontist: 3.0.10"
-else
-  echo "   SHIM unset — skipping exec leg (run tools/build first, then"
-  echo "   SHIM=out/work-aarch64-macos/prefix/o/p/ruby tools/boot_smoke ...)"
-fi
+TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
+  "$RUNTIME" --tebako-image "$IMG:-:/" --tebako-entry /bin/fontist --version \
+  | grep "fontist: 3.0.10"
 echo "BOOT-SMOKE-OK"

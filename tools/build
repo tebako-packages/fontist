@@ -1,33 +1,53 @@
 #!/usr/bin/env bash
 # tools/build — stage the fontist closure with a tebako runtime's own ruby
-# and image it (aarch64-macos leg; one mechanical leg per triplet).
+# and image it (one mechanical leg per triplet).
+#
+# Legs:
+#   aarch64-macos (default) — shim staging: the stub press's deploy-driver
+#     shim (o/p/ruby) runs every ruby process; the tebako CLI provisions
+#     the runtime SDK itself, so brotli's source build rides the shim's
+#     own build_overrides. Imaging: mkdwarfs-t (libtfs release asset).
+#   x86_64-windows-ucrt (TRIPLET=) — driver staging: no ruby shim exists
+#     on Windows (tebako-cli deploy.rs), so the staging scripts run as
+#     entries of a purpose-built driver image (tfs mkimage) with the env
+#     image handed over via TEBAKO_RUNTIME_IMAGE. brotli (source-only
+#     gem) is built without rubygems' ExtConfBuilder subprocess
+#     (tools/stage_brotli_manual.rb) against an SDK + import library
+#     assembled from the pinned ruby tarball. Imaging: tfs mkimage.
 #
 # Inputs (env, all with sane defaults):
+#   TRIPLET         aarch64-macos | x86_64-windows-ucrt
 #   TEBAKO_CLI      tebako-cli binary (default: tebako on PATH)
-#   MKDWARFS        mkdwarfs-t binary (default: mkdwarfs on PATH)
-#   WORK            build workspace (default: out/work-aarch64-macos)
-#   OUT             artifact dir   (default: out/aarch64-macos)
+#   TEBAKO_VERSION  runtime release line (default 0.16.2 — the v0.1.1 CLI
+#                   pins 0.16.1, which was never released; always override)
+#   TEBAKO_HOME     runtime cache root (default: out/tebako-home)
+#   MKDWARFS        mkdwarfs-t binary (mac leg; default: mkdwarfs on PATH)
+#   TFS             tfs CLI binary (windows leg; default: tfs on PATH)
+#   WORK            build workspace (default: out/work-$TRIPLET)
+#   OUT             artifact dir   (default: out/$TRIPLET)
 #
-# Produces: $OUT/fontist-<version>-aarch64-macos.tfs (+ manifest yaml).
+# Produces: $OUT/fontist-<version>-$TRIPLET.tfs (+ manifest yaml).
 #
-# Rules honored: no host ruby anywhere (the runtime IS the ruby — every
-# ruby process runs through the deploy-driver shim the CLI's own press
-# produces); every download sha256-verified (.gem files against the
-# compact index /info checksums, ruby tarball against the recipe pin,
-# the runtime against the tebako-runtime-ruby release manifest, verified
-# by tebako-cli's resolver).
+# Rules honored: no host ruby anywhere (the runtime IS the ruby); every
+# download sha256-verified (.gem files against the compact index /info
+# checksums, the ruby tarball against the recipe pin, the runtime against
+# the tebako-runtime-ruby release manifest, verified by tebako-cli's
+# resolver).
 set -euo pipefail
 
 FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="3.0.10"
-TRIPLET="aarch64-macos"
+TRIPLET="${TRIPLET:-aarch64-macos}"
 RUBY_V="3.3.7"
 API_V="3.3.0"
 
 TEBAKO_CLI="${TEBAKO_CLI:-tebako}"
+TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.2}"
 MKDWARFS="${MKDWARFS:-mkdwarfs}"
+TFS="${TFS:-tfs}"
 WORK="${WORK:-$FEEDSTOCK/out/work-$TRIPLET}"
 OUT="${OUT:-$FEEDSTOCK/out/$TRIPLET}"
+export TEBAKO_HOME="${TEBAKO_HOME:-$FEEDSTOCK/out/tebako-home}"
 CLOSURE="$FEEDSTOCK/closure/$VERSION-$TRIPLET.txt"
 
 SDK_URL="https://cache.ruby-lang.org/pub/ruby/3.3/ruby-3.3.7.tar.gz"
@@ -35,11 +55,28 @@ SDK_SHA256="9c37c3b12288c7aec20ca121ce76845be5bb5d77662a24919651aaf1d12c8628"
 
 step() { printf '\n== %s\n' "$*"; }
 
+sha256_file() { # portable sha256 (macOS: shasum; msys2/linux: sha256sum)
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+winpath() { # msys path → windows form for native exes / in-runtime ruby
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$1"
+  else
+    echo "$1" | sed -E 's|^/([a-zA-Z])/|\U\1:/|'
+  fi
+}
+
+[ -f "$CLOSURE" ] || { echo "no closure file for $TRIPLET: $CLOSURE"; exit 1; }
 mkdir -p "$WORK" "$OUT" "$WORK/gempkgs"
 
 # ---------------------------------------------------------------- runtime
-step "resolve the tebako runtime (tebako-cli cache, manifest-verified)"
-# A stub press makes the CLI resolve the runtime AND yields the
+step "resolve the tebako runtime $TEBAKO_VERSION (tebako-cli cache, manifest-verified)"
+# A stub press makes the CLI resolve the runtime AND, on POSIX, yields the
 # deploy-driver shim (o/p/ruby) used for every ruby invocation below.
 # The Gemfile forces the bundler deploy ops (a SimpleScript stub produces
 # no driver); base64 is dep-free and installs in seconds.
@@ -47,28 +84,29 @@ mkdir -p "$WORK/stubapp"
 printf 'puts "stub"\n' > "$WORK/stubapp/stub.rb"
 printf 'source "https://rubygems.org"\ngem "base64"\n' > "$WORK/stubapp/Gemfile"
 "$TEBAKO_CLI" press -r "$WORK/stubapp" -e stub.rb -o "$WORK/stub-pkg" \
-  -p "$WORK/prefix" -l warn
-SHIM="$WORK/prefix/o/p/ruby"
-[ -x "$SHIM" ] || { echo "no deploy shim at $SHIM"; exit 1; }
+  -p "$WORK/prefix" -l warn --tebako-version "$TEBAKO_VERSION"
 
-# ------------------------------------------------------------- SDK headers
-step "mkmf SDK header dir (ruby $RUBY_V, pinned + sha256-verified)"
-SDK="$WORK/sdk"
-if [ ! -f "$SDK/include/ruby-$API_V/ruby.h" ]; then
-  mkdir -p "$SDK"
-  curl -sL -o "$WORK/ruby.tar.gz" "$SDK_URL"
-  echo "$SDK_SHA256  $WORK/ruby.tar.gz" | shasum -a 256 -c -
-  mkdir -p "$WORK/ruby-src" "$WORK/ruby-build"
-  tar xzf "$WORK/ruby.tar.gz" -C "$WORK/ruby-src" --strip-components=1
-  (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
-      --disable-shared --disable-install-doc > configure.log 2>&1)
-  mkdir -p "$SDK/include/ruby-$API_V/arm64-darwin24/ruby"
-  cp -R "$WORK/ruby-src/include/." "$SDK/include/ruby-$API_V/"
-  cp "$WORK/ruby-build"/.ext/include/*/ruby/config.h \
-     "$SDK/include/ruby-$API_V/arm64-darwin24/ruby/config.h"
-fi
-sed "s|@@SDK_INCLUDE@@|$SDK/include/ruby-$API_V|" \
-  "$FEEDSTOCK/tools/sdk_patch.rb.in" > "$WORK/sdk_patch.rb"
+case "$TRIPLET" in
+  aarch64-macos)
+    RT_PLATFORM="macos-arm64"
+    SHIM="$WORK/prefix/o/p/ruby"
+    [ -x "$SHIM" ] || { echo "no deploy shim at $SHIM"; exit 1; }
+    ;;
+  x86_64-windows-ucrt)
+    RT_PLATFORM="windows-ucrt64"
+    ;;
+  *) echo "unknown TRIPLET: $TRIPLET"; exit 1 ;;
+esac
+
+RT_DIR="$TEBAKO_HOME/runtimes/ruby-$RUBY_V-$TEBAKO_VERSION-$RT_PLATFORM"
+RT_EXE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
+RT_IMAGE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM.tfs"
+[ "$TRIPLET" = "x86_64-windows-ucrt" ] && RT_EXE="$RT_EXE.exe"
+[ -f "$RT_EXE" ] || { echo "no cached runtime at $RT_EXE"; exit 1; }
+[ -f "$RT_IMAGE" ] || { echo "no cached runtime image at $RT_IMAGE"; exit 1; }
+# the boot smoke reads these (tools/boot_smoke's exec leg)
+{ echo "RUNTIME=$(winpath "$RT_EXE")"
+  echo "RUNTIME_IMAGE=$(winpath "$RT_IMAGE")"; } > "$OUT/runtime.env"
 
 # ---------------------------------------------------------- fetch the gems
 step "fetch + sha256-verify the closure ($CLOSURE)"
@@ -76,29 +114,106 @@ grep -v '^#' "$CLOSURE" | grep -v '^\s*$' | while read -r full sha; do
   f="$WORK/gempkgs/$full.gem"
   [ -f "$f" ] && continue
   curl -sL -o "$f" "https://rubygems.org/downloads/$full.gem"
-  actual=$(shasum -a 256 "$f" | cut -d' ' -f1)
+  actual="$(sha256_file "$f")"
   [ "$actual" = "$sha" ] || { echo "SHA256 MISMATCH $full: $actual != $sha"; exit 1; }
 done
 echo "all gems verified"
 
 # ------------------------------------------------------------------ stage
-step "stage the closure with the runtime ruby (no host ruby)"
-export TEBAKO_PASS_THROUGH=1 SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}"
-export GEM_HOME="$WORK/stage" GEM_PATH="$WORK/stage"
-export GEM_SPEC_CACHE="$WORK/stage/spec_cache"
-export CERT_DIR="$WORK/ssl_certs"
-export STAGE_DIR="$WORK/stage" GEMPKGS_DIR="$WORK/gempkgs"
-# brotli is the one source-built native dep: build it first, with the SDK
-# header preload active (mkmf re-enters the runtime via the shim).
-# PKG_CONFIG_LIBDIR masks any system libbrotli so the gem builds its
-# vendored sources (self-contained payload; see tools/stage_app.rb).
-export RUBYOPT="-r$WORK/sdk_patch.rb" PKG_CONFIG_LIBDIR=/nonexistent
-brotli=$(ls "$WORK"/gempkgs/brotli-*.gem | head -1)
-"$SHIM" "$FEEDSTOCK/tools/stage_app.rb" 2>&1 | grep -E "brotli|STAGE-OK|ERROR" \
-  || true   # stage_app installs the whole dir; brotli just builds first
-unset RUBYOPT PKG_CONFIG_LIBDIR
-[ -f "$WORK/stage/extensions/arm64-darwin-24/$API_V-static"/brotli-*/brotli/brotli.bundle ] \
-  || { echo "brotli native build failed"; exit 1; }
+case "$TRIPLET" in
+  aarch64-macos)
+    step "stage the closure with the runtime ruby via the deploy shim"
+    # The CLI's own RuntimeSdk (provisioned by the press) supplies the
+    # header/link overrides inside shim runs; brotli builds its vendored
+    # sources against them (PKG_CONFIG_LIBDIR masks any system libbrotli).
+    export TEBAKO_PASS_THROUGH=1 SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}"
+    export GEM_HOME="$WORK/stage" GEM_PATH="$WORK/stage"
+    export GEM_SPEC_CACHE="$WORK/stage/spec_cache"
+    export CERT_DIR="$WORK/ssl_certs"
+    export STAGE_DIR="$WORK/stage" GEMPKGS_DIR="$WORK/gempkgs"
+    export PKG_CONFIG_LIBDIR=/nonexistent
+    "$SHIM" "$FEEDSTOCK/tools/stage_app.rb" 2>&1 | grep -E "brotli|STAGE-OK|ERROR" \
+      || true   # stage_app installs the whole dir; brotli just builds first
+    unset PKG_CONFIG_LIBDIR
+    find "$WORK/stage/extensions" -path "*brotli-0.8.0*" -name 'brotli.*' \
+      | grep -q . || { echo "brotli native build failed"; exit 1; }
+    ;;
+
+  x86_64-windows-ucrt)
+    # ----------------------- SDK: headers + import library (brotli link)
+    step "mkmf SDK (ruby $RUBY_V for x64-mingw-ucrt, pinned + sha256-verified)"
+    SDK="$WORK/sdk"
+    IMPLIB="$SDK/lib/libruby-exp.a"
+    if [ ! -f "$IMPLIB" ]; then
+      mkdir -p "$SDK/include/ruby-$API_V" "$SDK/lib"
+      curl -sL -o "$WORK/ruby.tar.gz" "$SDK_URL"
+      actual="$(sha256_file "$WORK/ruby.tar.gz")"
+      [ "$actual" = "$SDK_SHA256" ] || { echo "SHA256 MISMATCH ruby tarball"; exit 1; }
+      rm -rf "$WORK/ruby-src" "$WORK/ruby-build"
+      mkdir -p "$WORK/ruby-src" "$WORK/ruby-build"
+      tar xzf "$WORK/ruby.tar.gz" -C "$WORK/ruby-src" --strip-components=1
+      (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
+          --disable-shared --disable-install-doc > configure.log 2>&1)
+      (cd "$WORK/ruby-build" && make -j"$(nproc 2>/dev/null || echo 4)" \
+          > make.log 2>&1 || { tail -30 make.log; exit 1; })
+      cp -R "$WORK/ruby-src/include/." "$SDK/include/ruby-$API_V/"
+      mkdir -p "$SDK/include/ruby-$API_V/x64-mingw-ucrt/ruby"
+      cp "$WORK/ruby-build"/.ext/include/*/ruby/config.h \
+         "$SDK/include/ruby-$API_V/x64-mingw-ucrt/ruby/config.h"
+      # The import library: the runtime factory's own mechanism (dlltool
+      # --export-all over the static libruby; the produced extensions
+      # import "ruby.exp.dll" like the runtime's own).
+      STATIC_LIB="$(find "$WORK/ruby-build" -name 'libruby*-static.a' | head -1)"
+      [ -n "$STATIC_LIB" ] || { echo "no static libruby under $WORK/ruby-build"; exit 1; }
+      dlltool --output-lib="$IMPLIB" --dllname ruby.exp.dll \
+              --output-def="$SDK/lib/ruby.exp.def" --export-all "$STATIC_LIB"
+    fi
+    sed -e "s|@@SDK_INCLUDE@@|$(winpath "$SDK/include/ruby-$API_V")|" \
+        -e "s|@@IMPLIB@@|$(winpath "$IMPLIB")|" \
+      "$FEEDSTOCK/tools/sdk_patch_msys.rb.in" > "$WORK/sdk_patch.rb"
+
+    # ----------------------- staging driver image (the windows shim-less
+    # ruby entry): the scripts ride a bare driver image mounted at /drv;
+    # the env image comes in via TEBAKO_RUNTIME_IMAGE.
+    step "staging driver image"
+    DRIVER="$WORK/driver"
+    rm -rf "$DRIVER"
+    mkdir -p "$DRIVER"
+    cp "$FEEDSTOCK/tools/stage_app.rb" "$FEEDSTOCK/tools/stage_brotli_manual.rb" "$DRIVER/"
+    DRIVER_IMG="$WORK/stage-driver.tfs"
+    rm -f "$DRIVER_IMG"
+    "$TFS" mkimage --format dwarfs "$DRIVER" -o "$DRIVER_IMG"
+
+    run_driver() { # <entry> [args...]
+      TEBAKO_PASS_THROUGH=1 \
+      TEBAKO_RUNTIME_IMAGE="$(winpath "$RT_IMAGE")" \
+      GEM_HOME="$(winpath "$WORK/stage")" GEM_PATH="$(winpath "$WORK/stage")" \
+      GEM_SPEC_CACHE="$(winpath "$WORK/stage/spec_cache")" \
+      SSL_CERT_FILE="${SSL_CERT_FILE:-/etc/ssl/cert.pem}" \
+      CERT_DIR="$(winpath "$WORK/ssl_certs")" \
+      STAGE_DIR="$(winpath "$WORK/stage")" GEMPKGS_DIR="$(winpath "$WORK/gempkgs")" \
+      BROTLI_GEM="$(winpath "$WORK/gempkgs/brotli-0.8.0.gem")" \
+      BROTLI_BUILD="$(winpath "$WORK/brotli-build")" \
+      "$RT_EXE" --tebako-image "$(winpath "$DRIVER_IMG"):-:/drv" \
+        --tebako-entry "$@"
+    }
+
+    step "stage the closure with the runtime ruby via the driver image"
+    # rubygems' ExtConfBuilder cannot run on Windows (no shim, no memfs
+    # spawn): precompiled gems install fine, brotli is skipped here and
+    # built manually below.
+    BROTLI_MANUAL=1 run_driver /stage_app.rb 2>&1 | grep -E "STAGE-OK|ERROR" \
+      || true
+
+    step "brotli native build (in-process extconf + host make)"
+    RUBYOPT="-r$(winpath "$WORK/sdk_patch.rb")" \
+      run_driver /stage_brotli_manual.rb extconf
+    (cd "$WORK/brotli-build/ext/brotli" && make -j"$(nproc 2>/dev/null || echo 4)")
+    run_driver /stage_brotli_manual.rb place
+    find "$WORK/stage/extensions" -path "*brotli-0.8.0*" -name 'brotli.so' \
+      | grep -q . || { echo "brotli native build failed"; exit 1; }
+    ;;
+esac
 
 # ----------------------------------------------------------- payload tree
 step "assemble the payload tree"
@@ -118,11 +233,14 @@ chmod 755 "$PAYLOAD/bin/fontist"
 cp "$FEEDSTOCK/templates/local/stub.rb" "$PAYLOAD/local/stub.rb"
 
 # ------------------------------------------------------------------ image
-step "mkdwarfs-t image"
+step "image the payload"
 IMG="$OUT/fontist-$VERSION-$TRIPLET.tfs"
 rm -f "$IMG"
-"$MKDWARFS" -i "$PAYLOAD" -o "$IMG" --no-progress
-sha=$(shasum -a 256 "$IMG" | cut -d' ' -f1)
+case "$TRIPLET" in
+  aarch64-macos)       "$MKDWARFS" -i "$PAYLOAD" -o "$IMG" --no-progress ;;
+  x86_64-windows-ucrt) "$TFS" mkimage --format dwarfs "$PAYLOAD" -o "$IMG" ;;
+esac
+sha="$(sha256_file "$IMG")"
 echo "image: $IMG"
 echo "sha256: $sha"
 
@@ -131,6 +249,7 @@ step "fill the manifest"
 MAN="$OUT/fontist-$VERSION.manifest.yaml"
 sed -e "s|blob_sha256: \"0*\"|blob_sha256: \"$sha\"|" \
     -e "s|created: \"[^\"]*\"|created: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" \
-    -e "s|commit: \"0*\"|commit: \"$(git -C "$FEEDSTOCK" rev-parse HEAD)\"|" \
+    -e "s|commit: \"0*\"|commit: \"${GITHUB_SHA:-$(git -C "$FEEDSTOCK" rev-parse HEAD)}\"|" \
+    -e "s|platforms: \[.*\]|platforms: [$TRIPLET]|" \
     "$FEEDSTOCK/manifests/payload.yaml" > "$MAN"
 echo "manifest: $MAN"
