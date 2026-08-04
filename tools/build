@@ -190,8 +190,13 @@ case "$TRIPLET" in
       (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
           --disable-shared --disable-install-doc \
           cppflags="-Wno-incompatible-pointer-types" > configure.log 2>&1)
+      # The build only needs the static archive (the import lib's input);
+      # the full `make` then dies at upstream's ruby.exp rule (obsolete
+      # dllwrap -mno-cygwin — the very rule the factory's pass-2 patch
+      # replaces), which the SDK does not use. Tolerate the tail failure,
+      # but fail loudly if the archive itself did not link.
       (cd "$WORK/ruby-build" && make -j"$(nproc 2>/dev/null || echo 4)" \
-          > make.log 2>&1 || { tail -30 make.log; exit 1; })
+          > make.log 2>&1 || true)
       cp -R "$WORK/ruby-src/include/." "$SDK/include/ruby-$API_V/"
       mkdir -p "$SDK/include/ruby-$API_V/x64-mingw-ucrt/ruby"
       cp "$WORK/ruby-build"/.ext/include/*/ruby/config.h \
@@ -200,7 +205,11 @@ case "$TRIPLET" in
       # --export-all over the static libruby; the produced extensions
       # import "ruby.exp.dll" like the runtime's own).
       STATIC_LIB="$(find "$WORK/ruby-build" -name 'libruby*-static.a' | head -1)"
-      [ -n "$STATIC_LIB" ] || { echo "no static libruby under $WORK/ruby-build"; exit 1; }
+      if [ -z "$STATIC_LIB" ]; then
+        tail -30 "$WORK/ruby-build/make.log"
+        echo "no static libruby under $WORK/ruby-build — the build failed before the archive"
+        exit 1
+      fi
       dlltool --output-lib="$IMPLIB" --dllname ruby.exp.dll \
               --output-def="$SDK/lib/ruby.exp.def" --export-all "$STATIC_LIB"
     fi
