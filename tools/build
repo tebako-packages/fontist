@@ -178,6 +178,15 @@ case "$TRIPLET" in
       rm -rf "$WORK/ruby-src" "$WORK/ruby-build"
       mkdir -p "$WORK/ruby-src" "$WORK/ruby-build"
       tar xzf "$WORK/ruby.tar.gz" -C "$WORK/ruby-src" --strip-components=1
+      # ruby 3.3.7 vs current mingw-w64 winpthreads headers: the clock
+      # fallback redefinition clash — the source factory's canonical fix,
+      # consumed pinned from the tamatebako/ruby tag (no vendored copy).
+      CLOCK_PATCH_URL="https://raw.githubusercontent.com/tamatebako/ruby/v0.2.14/patches/3.3/win32_clock_rename_msys.patch"
+      CLOCK_PATCH_SHA256="6158e7434eca15c6bcb1ee61855e83549baabac9a3c4fc5a488fe0600a26d875"
+      curl -sL -o "$WORK/win32_clock_rename_msys.patch" "$CLOCK_PATCH_URL"
+      actual="$(sha256_file "$WORK/win32_clock_rename_msys.patch")"
+      [ "$actual" = "$CLOCK_PATCH_SHA256" ] || { echo "SHA256 MISMATCH clock patch"; exit 1; }
+      (cd "$WORK/ruby-src" && patch -p1 < "$WORK/win32_clock_rename_msys.patch")
       (cd "$WORK/ruby-build" && "$WORK/ruby-src/configure" \
           --disable-shared --disable-install-doc \
           cppflags="-Wno-incompatible-pointer-types" > configure.log 2>&1)
