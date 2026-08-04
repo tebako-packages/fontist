@@ -26,7 +26,9 @@ X="$(mktemp -d)"
 [ -f "$X/bin/fontist" ] || { echo "extracted entrypoint missing"; exit 1; }
 
 echo "== exec fontist --version with a published tebako runtime"
+# NB: --flag=value forms — under MSYS2 a bare "/bin/fontist" argv element
+# would be path-converted to a host path; the entry is a VFS path.
 TEBAKO_RUNTIME_IMAGE="$RUNTIME_IMAGE" \
-  "$RUNTIME" --tebako-image "$IMG:-:/" --tebako-entry /bin/fontist --version \
+  "$RUNTIME" "--tebako-image=$IMG:-:/" "--tebako-entry=/bin/fontist" --version \
   | grep "fontist: 3.0.10"
 echo "BOOT-SMOKE-OK"

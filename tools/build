@@ -232,6 +232,10 @@ case "$TRIPLET" in
     "$TFS" mkimage --format dwarfs "$DRIVER" -o "$DRIVER_IMG"
 
     run_driver() { # <entry> [args...]
+      # NB: --flag=value forms. MSYS2 path-converts bare POSIX-looking
+      # argv ("/stage_app.rb" → "D:/.../msys64/stage_app.rb"); the entry
+      # is a VFS path and must reach the driver verbatim.
+      local entry="$1"; shift
       TEBAKO_PASS_THROUGH=1 \
       TEBAKO_RUNTIME_IMAGE="$(winpath "$RT_IMAGE")" \
       GEM_HOME="$(winpath "$WORK/stage")" GEM_PATH="$(winpath "$WORK/stage")" \
@@ -241,8 +245,8 @@ case "$TRIPLET" in
       STAGE_DIR="$(winpath "$WORK/stage")" GEMPKGS_DIR="$(winpath "$WORK/gempkgs")" \
       BROTLI_GEM="$(winpath "$WORK/gempkgs/brotli-0.8.0.gem")" \
       BROTLI_BUILD="$(winpath "$WORK/brotli-build")" \
-      "$RT_EXE" --tebako-image "$(winpath "$DRIVER_IMG"):-:/drv" \
-        --tebako-entry "$@"
+      "$RT_EXE" "--tebako-image=$(winpath "$DRIVER_IMG"):-:/drv" \
+        "--tebako-entry=$entry" "$@"
     }
 
     step "stage the closure with the runtime ruby via the driver image"
