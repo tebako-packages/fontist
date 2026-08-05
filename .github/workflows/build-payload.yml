@@ -98,10 +98,13 @@ jobs:
         with:
           msystem: ucrt64
           path-type: minimal
+          # ucrt64 ruby: the build's read-back step parses the shipped
+          # manifest as YAML (the macOS leg uses the system ruby).
           install: >-
             make
             patch
             mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-ruby
 
       - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.1, sha256-pinned)
         shell: msys2 {0}

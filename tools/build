@@ -311,3 +311,30 @@ sed -e "s|blob_sha256: \"0*\"|blob_sha256: \"$sha\"|" \
     -e "s|platforms: \[.*\]|platforms: [$TRIPLET]|" \
     "$FEEDSTOCK/manifests/payload.yaml" > "$MAN"
 echo "manifest: $MAN"
+
+# -------------------------------------------------------------- read-back
+# A broken payload fails THIS leg, never the publish step (the openjdk
+# incident: an invalid-YAML manifest caught at publish, exit 65). This
+# feedstock ships the manifest as the sibling yaml (no in-image
+# embedding): it must parse as YAML, and every entrypoint it declares
+# must exist in the image — re-read with the pinned tfs CLI (the windows
+# leg's own imager; on the mac leg the same v0.1.1 line reads the
+# factory-mkdwarfs image, as tools/boot_smoke already does).
+# Path rules (windows leg): the native tfs takes the host image path in
+# native form (winpath), while the VFS entrypoint paths (/bin/fontist)
+# must reach it verbatim — msys2 argument conversion would rewrite them
+# to host paths (MSYS2_ARG_CONV_EXCL, inert on POSIX).
+step "read-back: shipped manifest parses, declared entrypoints present"
+ENTRY_PATHS="$(ruby --disable-gems -ryaml -e '
+  $stdout.binmode   # ucrt64 ruby text mode would emit \r\n (breaks read -r)
+  m = YAML.load(STDIN.read)
+  es = (m.dig("provides", "entrypoints") || []) + (m.dig("provides", "executables") || [])
+  es.each { |e| puts e["path"] }' < "$MAN")" || {
+  echo "read-back FAILED: $MAN is not valid YAML"; exit 1; }
+while IFS= read -r p; do
+  p="${p%$'\r'}"   # belt-and-braces with the binmode above
+  [ -n "$p" ] || continue
+  MSYS2_ARG_CONV_EXCL='*' "$TFS" stat "$(winpath "$IMG")" "$p" >/dev/null || {
+    echo "read-back FAILED: declared entrypoint $p missing from $IMG"; exit 1; }
+  echo "read-back: $p present"
+done <<< "$ENTRY_PATHS"
