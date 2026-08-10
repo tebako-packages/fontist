@@ -113,14 +113,13 @@ if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
   RT_ASSET="tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
   mkdir -p "$RT_DIR"
   curl -sL -o "$WORK/SHA256SUMS.txt" "$RT_RELEASE_URL/SHA256SUMS.txt"
+  # The facet's install name follows the factory's rubyinstaller-style
+  # ABI rule (3.3.7 -> x64-ucrt-ruby330.dll); assert it against the
+  # release manifest (the SSOT) so a convention change fails loudly.
   curl -sL -o "$WORK/manifest.json" "$RT_RELEASE_URL/manifest.json"
-  DLL_INSTALL_AS=$(ruby -rjson -e '
-    m = JSON.parse(File.read(ARGV[0]))
-    e = m.find { |x| x["ruby_version"] == ARGV[1] && x["platform"] == ARGV[2] } ||
-        abort("no manifest entry for #{ARGV[1]}/#{ARGV[2]}")
-    name = e.dig("dll", "install_as") || abort("manifest entry carries no dll.install_as")
-    print name
-  ' "$WORK/manifest.json" "$RUBY_V" "$RT_PLATFORM")
+  DLL_INSTALL_AS="x64-ucrt-ruby$(echo "$RUBY_V" | awk -F. '{print $1 $2}')0.dll"
+  grep -q "\"$DLL_INSTALL_AS\"" "$WORK/manifest.json" \
+    || { echo "derived facet name $DLL_INSTALL_AS absent from the release manifest"; exit 1; }
   for f in "$RT_ASSET" "$RT_ASSET.tfs" "$RT_ASSET.dll"; do
     dst="$f"; [ "$f" = "$RT_ASSET" ] && dst="$f.exe"   # resolver cache naming
     [ "$f" = "$RT_ASSET.dll" ] && dst="$DLL_INSTALL_AS"
