@@ -17,9 +17,9 @@ build:
   runtime:
     engine: ruby
     version: "3.3.7"       # the staging + exec runtime (tebako-runtime-ruby)
-    tebako: "0.16.2"       # runtime release line (image-era; the v0.1.1 CLI
+    tebako: "0.16.3"       # runtime release line (image-era; the v0.1.2 CLI
                            # refuses pre-era releases by contract, exit 75)
-  # The tebako CLI (>= v0.1.1) provisions the runtime SDK itself on POSIX
+  # The tebako CLI (>= v0.1.2) provisions the runtime SDK itself on POSIX
   # (headers + symbol stub for the exact runtime) — no feedstock-side SDK
   # on the mac leg. The windows leg builds brotli's extension against an
   # SDK assembled from this pinned tarball (tools/build; mkmf on mingw

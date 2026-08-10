@@ -18,7 +18,7 @@
 # Inputs (env, all with sane defaults):
 #   TRIPLET         aarch64-macos | x86_64-windows-ucrt
 #   TEBAKO_CLI      tebako-cli binary (default: tebako on PATH)
-#   TEBAKO_VERSION  runtime release line (default 0.16.2 — the v0.1.1 CLI
+#   TEBAKO_VERSION  runtime release line (default 0.16.3 — the v0.1.2 CLI
 #                   pins 0.16.1, which was never released; always override)
 #   TEBAKO_HOME     runtime cache root (default: out/tebako-home)
 #   MKDWARFS        mkdwarfs-t binary (mac leg; default: mkdwarfs on PATH)
@@ -42,7 +42,7 @@ RUBY_V="3.3.7"
 API_V="3.3.0"
 
 TEBAKO_CLI="${TEBAKO_CLI:-tebako}"
-TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.2}"
+TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.3}"
 MKDWARFS="${MKDWARFS:-mkdwarfs}"
 TFS="${TFS:-tfs}"
 WORK="${WORK:-$FEEDSTOCK/out/work-$TRIPLET}"
@@ -318,7 +318,7 @@ echo "manifest: $MAN"
 # feedstock ships the manifest as the sibling yaml (no in-image
 # embedding): it must parse as YAML, and every entrypoint it declares
 # must exist in the image — re-read with the pinned tfs CLI (the windows
-# leg's own imager; on the mac leg the same v0.1.1 line reads the
+# leg's own imager; on the mac leg the same v0.1.2 line reads the
 # factory-mkdwarfs image, as tools/boot_smoke already does).
 # Path rules (windows leg): the native tfs takes the host image path in
 # native form (winpath), while the VFS entrypoint paths (/bin/fontist)
