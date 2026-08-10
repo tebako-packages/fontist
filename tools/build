@@ -104,17 +104,26 @@ RT_IMAGE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM.tfs"
 if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
   # Direct fetch, verified against the release's SHA256SUMS.txt (the
   # resolver's own fallback index; tmp+rename, a partial download never
-  # poisons the cache). `tebako press` cannot run on windows today: its
-  # bootstrap resolution asks the tebako-bootstrap index for
-  # windows-ucrt64, but that release line still names its windows asset
-  # windows-x86_64 (exit 131) — and the windows leg needs no shim anyway
-  # (there is none on Windows).
+  # poisons the cache). The leg needs no shim (there is none on
+  # Windows), so the direct fetch stays the simplest path. 0.16.3+:
+  # the windows runtime is a stub exe + the ruby DLL facet — the exe
+  # does not start without the facet next to it under the manifest's
+  # dll.install_as name (the SSOT for the facet name).
   RT_RELEASE_URL="https://github.com/tamatebako/tebako-runtime-ruby/releases/download/v$TEBAKO_VERSION"
   RT_ASSET="tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
   mkdir -p "$RT_DIR"
   curl -sL -o "$WORK/SHA256SUMS.txt" "$RT_RELEASE_URL/SHA256SUMS.txt"
-  for f in "$RT_ASSET" "$RT_ASSET.tfs"; do
+  curl -sL -o "$WORK/manifest.json" "$RT_RELEASE_URL/manifest.json"
+  DLL_INSTALL_AS=$(ruby -rjson -e '
+    m = JSON.parse(File.read(ARGV[0]))
+    e = m.find { |x| x["ruby_version"] == ARGV[1] && x["platform"] == ARGV[2] } ||
+        abort("no manifest entry for #{ARGV[1]}/#{ARGV[2]}")
+    name = e.dig("dll", "install_as") || abort("manifest entry carries no dll.install_as")
+    print name
+  ' "$WORK/manifest.json" "$RUBY_V" "$RT_PLATFORM")
+  for f in "$RT_ASSET" "$RT_ASSET.tfs" "$RT_ASSET.dll"; do
     dst="$f"; [ "$f" = "$RT_ASSET" ] && dst="$f.exe"   # resolver cache naming
+    [ "$f" = "$RT_ASSET.dll" ] && dst="$DLL_INSTALL_AS"
     grep -E "  $(echo "$f" | sed 's/\./\\./g')\$" "$WORK/SHA256SUMS.txt" > "$WORK/expected.sha" \
       || { echo "no SHA256SUMS entry for $f"; exit 1; }
     if [ ! -f "$RT_DIR/$dst" ]; then
@@ -125,7 +134,7 @@ if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
       mv "$RT_DIR/$dst.part" "$RT_DIR/$dst"
     fi
   done
-  echo "runtime verified against tebako-runtime-ruby v$TEBAKO_VERSION SHA256SUMS"
+  echo "runtime verified against tebako-runtime-ruby v$TEBAKO_VERSION SHA256SUMS (exe + image + $DLL_INSTALL_AS)"
   RT_EXE="$RT_EXE.exe"
 fi
 [ -f "$RT_EXE" ] || { echo "no cached runtime at $RT_EXE"; exit 1; }
