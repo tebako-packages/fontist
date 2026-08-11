@@ -38,21 +38,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.5, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.6, sha256-pinned)
         # The packager is the RELEASE BINARY (releases are the
         # interface); the digests are pinned here and cross-checked
         # against the release's SHA256SUMS (provenance: docs/build-notes.md).
         run: |
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v0.1.5"
-          curl -sLO "$base/tebako-0.1.5-macos-arm64"
-          curl -sLO "$base/tfs-0.1.5-macos-arm64"
-          echo "f8c679655d6a34163c5af2be2e80c162d4aca449e088042e29e86f9f22d3b67c  tebako-0.1.5-macos-arm64" > SHA256PINS
-          echo "1bf5646ef48dd63f27678f5b680cde6832f651a3a24c1f2ab467e7d706af4eeb  tfs-0.1.5-macos-arm64" >> SHA256PINS
+          base="https://github.com/tamatebako/tebako/releases/download/v0.1.6"
+          curl -sLO "$base/tebako-0.1.6-macos-arm64"
+          curl -sLO "$base/tfs-0.1.6-macos-arm64"
+          echo "77b09c346cdf11bb4a5c6fc9b35852841b1357355587d87008dc7be8d23390ee  tebako-0.1.6-macos-arm64" > SHA256PINS
+          echo "5e9a4131347a231c889426f67d02344a65999bc9b9ec998ce6930d2917ec7336  tfs-0.1.6-macos-arm64" >> SHA256PINS
           shasum -a 256 -c SHA256PINS
-          chmod 755 tebako-0.1.5-macos-arm64 tfs-0.1.5-macos-arm64
-          mv tebako-0.1.5-macos-arm64 tebako
-          mv tfs-0.1.5-macos-arm64 tfs
+          chmod 755 tebako-0.1.6-macos-arm64 tfs-0.1.6-macos-arm64
+          mv tebako-0.1.6-macos-arm64 tebako
+          mv tfs-0.1.6-macos-arm64 tfs
           echo "$RUNNER_TEMP/tebako-tools" >> "$GITHUB_PATH"
 
       - name: Fetch factory tools (tamatebako/libtfs v0.13.0, SHA256SUMS-verified)
@@ -106,18 +106,18 @@ jobs:
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-ruby
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.5, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.6, sha256-pinned)
         shell: msys2 {0}
         run: |
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v0.1.5"
-          curl -sLO "$base/tebako-0.1.5-windows-ucrt64.exe"
-          curl -sLO "$base/tfs-0.1.5-windows-ucrt64.exe"
-          echo "fcff2a65077b8c1a3b13c2f7ab4a1ffc2ecf8e38d9f426b20f2aa1a9dd75ab82  tebako-0.1.5-windows-ucrt64.exe" > SHA256PINS
-          echo "b1165ca8266ec4b589be81d48e2d20ed125f2de75cd75674e50bd384ede59ec8  tfs-0.1.5-windows-ucrt64.exe" >> SHA256PINS
+          base="https://github.com/tamatebako/tebako/releases/download/v0.1.6"
+          curl -sLO "$base/tebako-0.1.6-windows-ucrt64.exe"
+          curl -sLO "$base/tfs-0.1.6-windows-ucrt64.exe"
+          echo "d66355925a696254d07e45bcdee14f44020b6d6ce04a74d3ca548405132807d0  tebako-0.1.6-windows-ucrt64.exe" > SHA256PINS
+          echo "85e7b886e71b919ae6ecec2a36bcdb401691ac57197c581c21b61c9d4c0df395  tfs-0.1.6-windows-ucrt64.exe" >> SHA256PINS
           sha256sum -c SHA256PINS
-          cp tebako-0.1.5-windows-ucrt64.exe tebako.exe
-          cp tfs-0.1.5-windows-ucrt64.exe tfs.exe
+          cp tebako-0.1.6-windows-ucrt64.exe tebako.exe
+          cp tfs-0.1.6-windows-ucrt64.exe tfs.exe
           echo "TEBAKO_TOOLS=$(cygpath -m "$RUNNER_TEMP/tebako-tools")" >> "$GITHUB_ENV"
 
       - name: Build the payload
