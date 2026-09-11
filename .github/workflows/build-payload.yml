@@ -167,6 +167,37 @@ jobs:
           merge-multiple: true
       - name: Publish payloads + registry
         # artifacts per triplet + SHA256SUMS + the resolved tpkg-registry.yaml
-        run: tools/publish 3.0.10
+        # (tools/publish regenerates the repo-root registry in the current
+        # grammar, upserting the published version); spec 09 §9 signing is
+        # declared in recipe.yml, so the org secret must be installed — an
+        # empty key on a tag push fails the publish.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEBAKO_SIGNING_KEY: ${{ secrets.TEBAKO_CI_SIGNING_KEY }}
+        run: tools/publish
+      # main is branch-protected (and the GitHub-Actions bypass is not
+      # available on this plan): the registry lands by bot PR + auto-merge,
+      # never by direct push. Idempotent across re-runs of the same tag.
+      - name: Publish the registry entry via pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "tebako-ci"
+          git config user.email "tebako@ribose.com"
+          git fetch origin main
+          if git diff --quiet origin/main -- tpkg-registry.yaml; then
+            echo "registry unchanged (or the entry already landed on main)"
+            exit 0
+          fi
+          branch="publish/${{ github.ref_name }}-registry"
+          git checkout -b "$branch"
+          git add tpkg-registry.yaml
+          git commit -m "publish ${{ github.ref_name }}: registry entry (aarch64-macos)"
+          git push origin "$branch"
+          if ! gh pr view "$branch" >/dev/null 2>&1; then
+            gh pr create --base main --head "$branch" \
+              --title "publish ${{ github.ref_name }}: registry entry" \
+              --body "Automated registry entry for ${{ github.ref_name }} (the build-payload publish job; main is protected, so the registry lands by PR)."
+          fi
+          gh pr merge --auto --squash "$branch" || gh pr merge --squash "$branch"
