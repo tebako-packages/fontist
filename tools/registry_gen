@@ -1,0 +1,127 @@
+#!/usr/bin/env ruby
+# registry_gen — (re)generate this feedstock's tpkg-registry.yaml for one
+# publish run, UPSERTING the published version over the existing file.
+#
+#   registry_gen RECIPE TAG REPO FEEDSTOCK_ROOT TRIPLET...
+#
+# Reads <root>/out/<triplet>/ for <name>-<version>-<triplet>.tfs images
+# (digests computed here, ruby Digest — the shell-side SHA256SUMS is the
+# same files' sums) and writes <root>/tpkg-registry.yaml in the CURRENT
+# grammar (spec 18 §2.2 + spec 04 §2: schema_version 1, payloads a list,
+# platforms a triplet → {artifact, sha256} map — the only dialect the
+# resolver's model of record parses).
+#
+# Upsert: existing payload entries carry forward untouched; this payload's
+# older version entries carry forward too — LEGACY list-shaped entries
+# (platforms: [{triplet:, image: {url:, sha256:}, manifest: …}], pre
+# spec-04 §2) convert on the fly (artifact = the image URL's basename,
+# release.ref derived from the download URL's tag). The new entry REPLACES
+# any existing entry for the same version and becomes the default.
+#
+# The signature pin is emitted when the recipe declares signing (spec 09
+# §9): the PRIMARY keyid + the <artifact>.asc convention (the .asc files
+# themselves are produced by tools/publish's signer AFTER this file is
+# written — the pin names the convention, never the bytes).
+
+require 'yaml'
+require 'json'
+require 'digest'
+
+def die(msg)
+  warn "registry_gen: #{msg}"
+  exit 64
+end
+
+RECIPE, TAG, REPO, ROOT = ARGV[0], ARGV[1], ARGV[2], ARGV[3]
+TRIPLETS = ARGV[4..] || []
+die "usage: registry_gen RECIPE TAG REPO FEEDSTOCK_ROOT TRIPLET..." if TRIPLETS.empty?
+
+recipe = YAML.load_file(RECIPE)
+name = recipe.fetch('name')
+kind = recipe.fetch('kind', 'toolkit')
+version = recipe.dig('upstream', 'version') or die "recipe upstream.version missing"
+keyid = recipe.dig('signing', 'keyid')
+
+# The version-level runtime requirement mirrors the entrypoints': every
+# declared entrypoint must agree (never guess a merge).
+entrypoints = recipe.dig('provides', 'entrypoints') || []
+names = entrypoints.map { |e| e.fetch('name') }
+reqs = entrypoints.map { |e| e['runtime_requirement'] }.compact.uniq
+die "provides.entrypoints declare differing runtime_requirement values — the registry carries one per version" if reqs.length > 1
+
+# --- the new version entry: platforms from the staged images -----------
+platforms = {}
+TRIPLETS.each do |triplet|
+  dir = File.join(ROOT, 'out', triplet)
+  images = Dir.glob(File.join(dir, "#{name}-#{version}-#{triplet}.tfs"))
+  die "no #{name}-#{version}-#{triplet}.tfs under #{dir} — run tools/build first" if images.empty?
+  die "several images match #{name}-#{version}-#{triplet}.tfs under #{dir}" if images.length > 1
+  img = images.first
+  platforms[triplet] = {
+    'artifact' => File.basename(img),
+    'sha256' => Digest::SHA256.file(img).hexdigest,
+  }
+end
+
+entry = {
+  'version' => version,
+  'platforms' => platforms,
+  'release' => { 'ref' => "tfs:github:#{REPO}:#{TAG}" },
+}
+if keyid
+  # spec 09 §9: the pin names the signing key's PRIMARY keyid. Per-triplet
+  # releases carry one asc per artifact by convention (<artifact>.asc) and
+  # the installer derives the SELECTED artifact's asc; `asc` names the
+  # first artifact's as the convention anchor.
+  entry['signature'] = { 'keyid' => keyid, 'asc' => "#{platforms.values.first['artifact']}.asc" }
+end
+entry['runtime_requirement'] = reqs.first if reqs.first
+entry['entrypoints'] = names unless names.empty?
+
+# --- upsert over the existing registry ----------------------------------
+REGISTRY = File.join(ROOT, 'tpkg-registry.yaml')
+existing = File.exist?(REGISTRY) ? YAML.load_file(REGISTRY) : nil
+
+def legacy_ref(repo, url)
+  m = %r{\Ahttps://github\.com/[^/]+/[^/]+/releases/download/([^/]+)/}.match(url.to_s)
+  m ? "tfs:github:#{repo}:#{m[1]}" : nil
+end
+
+convert = lambda do |v|
+  return v unless v['platforms'].is_a?(Array) # legacy list shape
+  triplet_map = {}
+  v['platforms'].each do |p|
+    url = p.dig('image', 'url') or die "legacy entry #{v['version']}: platform without image.url"
+    sha = p.dig('image', 'sha256') or die "legacy entry #{v['version']}: platform without image.sha256"
+    triplet_map[p.fetch('triplet')] = { 'artifact' => File.basename(url), 'sha256' => sha }
+  end
+  ref = legacy_ref(REPO, v.dig('platforms', 0, 'image', 'url')) ||
+        die("legacy entry #{v['version']}: cannot derive release.ref from the image URLs")
+  out = {
+    'version' => v.fetch('version'),
+    'platforms' => triplet_map,
+    'release' => { 'ref' => ref },
+  }
+  out['signature'] = v['signature'] if v['signature']
+  out['runtime_requirement'] = v['runtime_requirement'] if v['runtime_requirement']
+  out['entrypoints'] = v['entrypoints'] if v['entrypoints']
+  out
+end
+
+payloads = existing&.fetch('payloads', []) || []
+mine = payloads.find { |p| p['name'] == name }
+others = payloads.reject { |p| p['name'] == name }
+versions = (mine&.fetch('versions', []) || [])
+  .reject { |v| v['version'] == version }
+  .map { |v| convert.call(v) }
+versions << entry
+
+payload = {
+  'name' => name,
+  'kind' => kind,
+  'versions' => versions,
+  'default' => version,
+}
+
+File.write(REGISTRY, YAML.dump('schema_version' => 1, 'payloads' => [*others, payload]))
+puts "registry_gen: #{name} #{version} — #{platforms.keys.join(', ')} (#{versions.length} version entries, default #{version}#{keyid ? ', signed pin ' + keyid : ', unsigned'})"

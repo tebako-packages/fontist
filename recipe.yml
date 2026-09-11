@@ -45,6 +45,22 @@ tools:
   repo: "tamatebako/libtfs"
   release: "v0.13.0"
 
+# Signing (spec 09 §9 — opt-in per feedstock): on tag pushes tools/publish
+# signs every payload image (plus SHA256SUMS and the registry itself) with
+# the CI signing subkey of the tamatebako root, supplied as the org secret
+# TEBAKO_CI_SIGNING_KEY, and the registry pins the PRIMARY keyid (the
+# identity, not the rotating subkey instrument). A declared signing block
+# with an absent secret fails the publish — a signing feedstock never
+# ships an unsigned release silently. The signer binary is fetched from
+# the pinned release and verified against the pinned digest (the same
+# trust-anchor role as upstream.sha256).
+signing:
+  keyid: "efc3c250f7862a48" # 2026-09-09 tamatebako root primary (low 64)
+  tool:
+    repo: "tamatebako/tebako"
+    release: "v2.5.0"
+    sha256: "071506449681529db8cca71a4b7aa6b65414434021649b7f18ef1ad55badf1bc" # tebako-pkg-2.5.0-linux-gnu-x86_64
+
 platforms:
   - aarch64-macos          # triplet-bound (nokogiri/ffi precompiled, brotli
                            # compiled per-triplet). More triplets: CI legs.

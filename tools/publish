@@ -1,36 +1,119 @@
 #!/usr/bin/env bash
-# tools/publish <version> — release the built artifacts and pin this repo's
-# tpkg-registry.yaml (conventions.md: per-triplet payload artifacts +
-# SHA256SUMS + registry yaml at the default-branch root).
+# tools/publish — publish a feedstock release for the current tag.
+#
+#   tools/publish            (CI: tag push; needs GH_TOKEN, GITHUB_REF_NAME,
+#                             GITHUB_REPOSITORY; out/ holds every leg's
+#                             staged artifacts, merged by download-artifact)
+#
+# Publishes: per-triplet payload images + manifests, SHA256SUMS, and the
+# resolved tpkg-registry.yaml (spec 18 §2.2 + spec 04 §2's per-triplet map
+# shape — tools/registry_gen UPSERTS the published version over the
+# repo-root registry, which then lands on main via the workflow's registry
+# PR step). When the recipe declares a signing: block (spec 09 §9), every
+# .tfs plus SHA256SUMS and the registry itself are signed with the CI
+# signing subkey (org secret TEBAKO_CI_SIGNING_KEY) via the pinned,
+# digest-verified tebako-pkg; the .asc files publish alongside, and the
+# registry pins the PRIMARY keyid (the identity, not the rotating subkey
+# instrument). A declared signer with no key material FAILS the publish —
+# a signing feedstock never ships unsigned silently.
+#
+# PUBLISH SCOPE: aarch64-macos only. The windows leg's build is green but
+# deliberately unpublished (current windows runtimes cannot load dynamic
+# native extensions — docs/build-notes.md § Windows); its staged artifacts
+# are ignored here by omission, not by failure.
 set -euo pipefail
 
-VERSION="${1:?usage: tools/publish <version>}"
-FEEDSTOCK="$(cd "$(dirname "$0")/.." && pwd)"
-TRIPLET="aarch64-macos"
-OUT="$FEEDSTOCK/out/$TRIPLET"
-IMG="fontist-$VERSION-$TRIPLET.tfs"
-MAN="fontist-$VERSION.manifest.yaml"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib/common.sh"
 
-[ -f "$OUT/$IMG" ] || { echo "missing $OUT/$IMG — run tools/build first"; exit 1; }
-[ -f "$OUT/$MAN" ] || { echo "missing $OUT/$MAN — run tools/build first"; exit 1; }
+FEEDSTOCK="$(cd "$HERE/.." && pwd)"
+RECIPE="${RECIPE:-$FEEDSTOCK/recipe.yml}"
+TAG="${GITHUB_REF_NAME:?publish: GITHUB_REF_NAME (tag) not set — run on a tag push}"
+REPO="${GITHUB_REPOSITORY:?publish: GITHUB_REPOSITORY not set}"
+: "${GH_TOKEN:?publish: GH_TOKEN not set}"
 
-img_sha=$(shasum -a 256 "$OUT/$IMG" | cut -d' ' -f1)
-man_sha=$(shasum -a 256 "$OUT/$MAN" | cut -d' ' -f1)
+PUBLISH_TRIPLETS="aarch64-macos"   # windows: unpublished (see the header)
 
-# SHA256SUMS next to the artifacts (also uploaded).
-{ echo "$img_sha  $IMG"; echo "$man_sha  $MAN"; } > "$OUT/SHA256SUMS"
+shopt -s nullglob
+IMAGES=(); MANIFESTS=()
+for t in $PUBLISH_TRIPLETS; do
+  IMAGES+=("$FEEDSTOCK/out/$t"/*.tfs)
+  MANIFESTS+=("$FEEDSTOCK/out/$t"/*.manifest.yaml)
+done
+[ "${#IMAGES[@]}" -gt 0 ] || { echo "publish: no payload images under out/ ($PUBLISH_TRIPLETS) — run tools/build first" >&2; exit 1; }
 
-# Pin the registry file at the repo root.
-sed -i '' \
-  -e "s|\"IMAGE_SHA256\"|\"$img_sha\"|" \
-  -e "s|\"MANIFEST_SHA256\"|\"$man_sha\"|" \
-  "$FEEDSTOCK/tpkg-registry.yaml"
+# --- SHA256SUMS over the payload images + manifests -------------------
+# (basenames — the release assets are the basenames; the sums file itself
+# is never summed; sha256_of keeps the script runnable on a macOS desk —
+# CI is ubuntu, where it resolves to sha256sum)
+SUMS="$FEEDSTOCK/out/SHA256SUMS"
+: > "$SUMS"
+for t in $PUBLISH_TRIPLETS; do
+  ( cd "$FEEDSTOCK/out/$t" && for f in *.tfs *.manifest.yaml; do
+      printf '%s  %s\n' "$(sha256_of "$f")" "$f"
+    done ) >> "$SUMS"
+done
+cat "$SUMS"
 
-gh release create "$VERSION" \
-  --repo tebako-packages/fontist \
-  --title "fontist $VERSION" \
-  --notes "kind: app payload (runtime-required, ruby ~> 3.3.0 ABI). Artifacts: $IMG (+ manifest, SHA256SUMS). See docs/build-notes.md." \
-  "$OUT/$IMG" "$OUT/$MAN" "$OUT/SHA256SUMS"
+# --- resolved registry for this release -------------------------------
+# Upserts the published version over the repo-root tpkg-registry.yaml
+# (current grammar; legacy entries convert on the fly — see registry_gen).
+"$HERE/registry_gen" "$RECIPE" "$TAG" "$REPO" "$FEEDSTOCK" $PUBLISH_TRIPLETS
+echo "--- tpkg-registry.yaml ---"
+cat "$FEEDSTOCK/tpkg-registry.yaml"
 
-echo "released $VERSION"
-echo "next: add the feedstock to tebako-packages/index tpkg-registry.yaml"
+# --- signing (spec 09 §9 — opt-in via the recipe's signing: block) -----
+ASCS=()
+SIGN_KEYID="$("$HERE/recipe_query" "$RECIPE" signing.keyid 2>/dev/null || true)"
+if [ -n "$SIGN_KEYID" ]; then
+  : "${TEBAKO_SIGNING_KEY:?publish: recipe declares signing but TEBAKO_SIGNING_KEY is empty — a signing feedstock never publishes unsigned}"
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/tebako-publish.XXXXXXXX")"
+  trap 'rm -rf "$WORK"' EXIT
+  download_signer "$WORK" \
+    "$("$HERE/recipe_query" "$RECIPE" signing.tool.repo)" \
+    "$("$HERE/recipe_query" "$RECIPE" signing.tool.release)" \
+    "$("$HERE/recipe_query" "$RECIPE" signing.tool.sha256)"
+  KEY_FILE="$WORK/signing-key.asc"
+  printf '%s\n' "$TEBAKO_SIGNING_KEY" > "$KEY_FILE"
+  chmod 600 "$KEY_FILE"
+  if ! SIGN_OUT="$("$WORK/tebako-pkg" sign --key-file "$KEY_FILE" --no-sums \
+      "${IMAGES[@]}" "$SUMS" "$FEEDSTOCK/tpkg-registry.yaml" 2>&1)"; then
+    printf '%s\n' "$SIGN_OUT" >&2
+    echo "publish: tebako-pkg sign failed" >&2
+    exit 1
+  fi
+  echo "$SIGN_OUT"
+  # The signer self-reports the PRIMARY keyid — it must be the pinned one.
+  REPORTED="$(printf '%s\n' "$SIGN_OUT" | sed -n 's/^signed .* with key \([0-9a-f]\{16\}\).*/\1/p')"
+  if [ "$REPORTED" != "$SIGN_KEYID" ]; then
+    echo "publish: SIGNER KEYID MISMATCH — recipe pins $SIGN_KEYID, tebako-pkg reported ${REPORTED:-none}" >&2
+    exit 1
+  fi
+  for f in "${IMAGES[@]}" "$SUMS" "$FEEDSTOCK/tpkg-registry.yaml"; do
+    [ -f "$f.asc" ] || { echo "publish: expected $f.asc — the signer produced no .asc for it" >&2; exit 1; }
+    ASCS+=("$f.asc")
+  done
+else
+  echo "publish: recipe declares no signing — releasing UNSIGNED (spec 09: unsigned stays first-class, with this loud warning)"
+fi
+
+# --- release -----------------------------------------------------------
+TITLE="$("$HERE/recipe_query" "$RECIPE" name) $TAG"
+NOTES="tebako app payload (runtime-required) — built from recipe.yml by build-payload.yml. "$'\n'"\
+Artifacts: per-triplet .tfs payload images + spec-03 manifests, SHA256SUMS, resolved tpkg-registry.yaml."
+if [ -n "$SIGN_KEYID" ]; then
+  NOTES="$NOTES"$'\n'"\
+OpenPGP-signed (spec 09 §9): a detached .asc per .tfs plus SHA256SUMS.asc and tpkg-registry.yaml.asc; the registry pins primary keyid $SIGN_KEYID."
+fi
+
+if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+  echo "publish: release $TAG exists — uploading (clobber)"
+  gh release upload "$TAG" --repo "$REPO" --clobber \
+    "${IMAGES[@]}" "${MANIFESTS[@]}" "${ASCS[@]+"${ASCS[@]}"}" "$SUMS" "$FEEDSTOCK/tpkg-registry.yaml"
+else
+  gh release create "$TAG" --repo "$REPO" --title "$TITLE" --notes "$NOTES" \
+    "${IMAGES[@]}" "${MANIFESTS[@]}" "${ASCS[@]+"${ASCS[@]}"}" "$SUMS" "$FEEDSTOCK/tpkg-registry.yaml"
+fi
+
+echo "publish: OK — https://github.com/$REPO/releases/tag/$TAG"
+echo "next: the workflow's registry PR lands tpkg-registry.yaml on main"
