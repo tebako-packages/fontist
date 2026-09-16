@@ -13,7 +13,7 @@ self-contained `kind: toolkit` payloads).
 
 ## Layout
 
-- `recipe.yml` — upstream, runtime, resolution pins, platforms, entrypoints
+- `Tebakofile` — upstream, runtime, resolution pins, platforms, entrypoints
 - `manifests/payload.yaml` — the spec 03 payload manifest (filled at build)
 - `tpkg-registry.yaml` — this feedstock's registry (pinned at release)
 - `tools/` — `build` (stage → image → manifest), `boot_smoke`, `publish`

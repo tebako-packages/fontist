@@ -169,7 +169,7 @@ jobs:
         # artifacts per triplet + SHA256SUMS + the resolved tpkg-registry.yaml
         # (tools/publish regenerates the repo-root registry in the current
         # grammar, upserting the published version); spec 09 §9 signing is
-        # declared in recipe.yml, so the org secret must be installed — an
+        # declared in Tebakofile, so the org secret must be installed — an
         # empty key on a tag push fails the publish.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

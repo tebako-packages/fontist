@@ -27,7 +27,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/lib/common.sh"
 
 FEEDSTOCK="$(cd "$HERE/.." && pwd)"
-RECIPE="${RECIPE:-$FEEDSTOCK/recipe.yml}"
+RECIPE="${RECIPE:-$FEEDSTOCK/Tebakofile}"
 TAG="${GITHUB_REF_NAME:?publish: GITHUB_REF_NAME (tag) not set — run on a tag push}"
 REPO="${GITHUB_REPOSITORY:?publish: GITHUB_REPOSITORY not set}"
 : "${GH_TOKEN:?publish: GH_TOKEN not set}"
@@ -99,7 +99,7 @@ fi
 
 # --- release -----------------------------------------------------------
 TITLE="$("$HERE/recipe_query" "$RECIPE" name) $TAG"
-NOTES="tebako app payload (runtime-required) — built from recipe.yml by build-payload.yml. "$'\n'"\
+NOTES="tebako app payload (runtime-required) — built from Tebakofile by build-payload.yml. "$'\n'"\
 Artifacts: per-triplet .tfs payload images + spec-03 manifests, SHA256SUMS, resolved tpkg-registry.yaml."
 if [ -n "$SIGN_KEYID" ]; then
   NOTES="$NOTES"$'\n'"\
