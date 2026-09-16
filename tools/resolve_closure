@@ -49,7 +49,7 @@ CERT_DIR="$WORK/ssl_certs" APP_DIR="$WORK/app" \
   "$SHIM" "$WORK/lock.rb" > "$WORK/lock.txt"
 
 echo "# lock written to $WORK/lock.txt — review it, apply the pins and"
-echo "# skip-defaults policy from recipe.yml, choose platform variants for"
+echo "# skip-defaults policy from Tebakofile, choose platform variants for"
 echo "# native gems (nokogiri/ffi: <triplet> precompiled; brotli: source),"
 echo "# then fetch each .gem and record its /info checksum into"
 echo "# closure/$VERSION-$TRIPLET.txt (format: <gem>-<ver>[-<plat>] <sha256>)."

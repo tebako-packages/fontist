@@ -58,7 +58,7 @@ tebako-runtime-ruby release manifest by tebako-cli's resolver):
   index `/info/<gem>` checksum before staging. The pinned set is
   committed at `closure/3.0.10-aarch64-macos.txt`.
 - The ruby tarball for the SDK headers is sha256-verified against the
-  pin in `recipe.yml` (matches the ruby-lang.org release page).
+  pin in `Tebakofile` (matches the ruby-lang.org release page).
 
 ## 3. Staging (what `tools/build` does)
 

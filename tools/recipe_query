@@ -1,14 +1,14 @@
 #!/usr/bin/env ruby
-# recipe_query — read a value from a feedstock recipe.yml.
+# recipe_query — read a value from a feedstock Tebakofile.
 # Usage: recipe_query RECIPE KEY...
 #   KEY is dot-separated; numeric segments index into arrays.
 # Scalars print as-is; arrays/hashes print as JSON (valid YAML flow).
 # Missing keys are a hard error (no silent fallbacks).
 #
 # Examples:
-#   recipe_query recipe.yml upstream.url
-#   recipe_query recipe.yml provides.entrypoints.0.path
-#   recipe_query recipe.yml platforms
+#   recipe_query Tebakofile upstream.url
+#   recipe_query Tebakofile provides.entrypoints.0.path
+#   recipe_query Tebakofile platforms
 
 require 'yaml'
 require 'json'
