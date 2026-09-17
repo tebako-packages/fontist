@@ -328,7 +328,9 @@ echo "sha256: $sha"
 
 # --------------------------------------------------------------- manifest
 step "fill the manifest"
-MAN="$OUT/fontist-$VERSION.manifest.yaml"
+# Per-triplet name: both legs' manifests land on the SAME release as
+# assets — a bare <name>-<version>.manifest.yaml collides at upload.
+MAN="$OUT/fontist-$VERSION-$TRIPLET.manifest.yaml"
 sed -e "s|blob_sha256: \"0*\"|blob_sha256: \"$sha\"|" \
     -e "s|created: \"[^\"]*\"|created: \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"|" \
     -e "s|commit: \"0*\"|commit: \"${GITHUB_SHA:-$(git -C "$FEEDSTOCK" rev-parse HEAD)}\"|" \
