@@ -17,10 +17,11 @@
 # instrument). A declared signer with no key material FAILS the publish —
 # a signing feedstock never ships unsigned silently.
 #
-# PUBLISH SCOPE: aarch64-macos only. The windows leg's build is green but
-# deliberately unpublished (current windows runtimes cannot load dynamic
-# native extensions — docs/build-notes.md § Windows); its staged artifacts
-# are ignored here by omission, not by failure.
+# PUBLISH SCOPE: every leg's triplet (aarch64-macos + x86_64-windows-ucrt).
+# The windows leg's boot smoke runs ENFORCING on the 0.16.x runtime line
+# (the ruby DLL facet + library_aliases — spec 22 phase W2), so its
+# artifact publishes with the mac one; a failed windows leg fails the
+# workflow before this script runs (the publish job needs both legs).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -32,7 +33,7 @@ TAG="${GITHUB_REF_NAME:?publish: GITHUB_REF_NAME (tag) not set — run on a tag 
 REPO="${GITHUB_REPOSITORY:?publish: GITHUB_REPOSITORY not set}"
 : "${GH_TOKEN:?publish: GH_TOKEN not set}"
 
-PUBLISH_TRIPLETS="aarch64-macos"   # windows: unpublished (see the header)
+PUBLISH_TRIPLETS="aarch64-macos x86_64-windows-ucrt"
 
 shopt -s nullglob
 IMAGES=(); MANIFESTS=()

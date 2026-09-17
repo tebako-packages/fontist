@@ -1,53 +1,47 @@
 #!/usr/bin/env bash
-# tools/smoke_verdict <rc> <log> — the windows leg's pinned boot-smoke
-# verdict. The exec gate (tools/boot_smoke) currently CANNOT pass on
-# windows-ucrt64, for two independent RUNTIME-LAYER reasons (neither is
-# fixable in this feedstock; docs/build-notes.md §8.3):
+# tools/smoke_verdict <rc> <log> — the windows leg's boot-smoke verdict,
+# ENFORCING since the runtime pin moved to the 0.16.25 line (ruby 3.3.12):
+# any boot-smoke failure fails the leg (fail-closed).
 #
-#   G1 mount addressing — ruby on windows re-roots drive-relative paths
-#      (the only kind a payload mount can be, the triple grammar taking
-#      no drive letter) onto the cwd drive at the C level, so requires
-#      from the payload escape the VFS (fails as
-#      "cannot load such file -- fontist").
-#   G2 no dynamic native extensions — the interpreter is
-#      --disable-shared/--with-static-linked-ext, exports no symbols,
-#      and ships no ruby DLL, so nokogiri/ffi/brotli .so files have
-#      nothing to bind to (would fail as
-#      "cannot load such file -- nokogiri/nokogiri" once G1 is fixed).
+# The two RUNTIME-LAYER gaps this file used to tolerate
+# (docs/build-notes.md § Windows) are CLOSED on the 0.16.x line:
 #
-# This verdict pins exactly those signatures: green only for the known
-# states, loud for every drift.
+#   G1 mount addressing — CLOSED by the spec-17 uniform namespace /
+#      era-2 image layout (payload requires no longer escape the VFS as
+#      a drive-relative re-root onto the cwd drive).
+#   G2 no dynamic native extensions — CLOSED by the ruby DLL facet +
+#      the loader interpose + library_aliases (spec 22 phase W2; the
+#      facet ships as x64-ucrt-ruby330.dll next to the stub exe, so
+#      nokogiri/ffi/brotli .so files have a symbol provider).
 #
-#   rc == 0                  → the gaps are CLOSED: enforce the gate
-#                              (make boot_smoke a hard gate, wire the
-#                              windows artifact into tools/publish +
-#                              tpkg-registry.yaml).
-#   rc != 0 + known pattern  → a documented gap; the leg stays green but
-#                              the artifact must not publish.
-#   anything else            → an undiagnosed failure: RED.
+# The verdict contract is now fail-closed:
+#
+#   rc == 0                  → PASS.
+#   rc != 0 + the old G1/G2 LoadError signature
+#                            → RED: a REGRESSION of the windows runtime
+#                              fixes (or the wrong runtime resolved) —
+#                              named, never tolerated.
+#   anything else            → RED: an undiagnosed failure.
 set -euo pipefail
 
 rc="${1:?usage: tools/smoke_verdict <rc> <log>}"
 log="${2:?usage: tools/smoke_verdict <rc> <log>}"
 
 if [ "$rc" -eq 0 ]; then
-  echo "BOOT SMOKE PASSED on windows-ucrt64 — the runtime-layer gaps are"
-  echo "closed (mount addressing + a symbol provider shipped). NEXT: make"
-  echo "tools/boot_smoke a hard gate on the windows leg and wire the"
-  echo "artifact into tools/publish + tpkg-registry.yaml."
+  echo "BOOT SMOKE PASSED on windows-ucrt64 against the 0.16.25 runtime"
+  echo "line (enforcing gate): the entrypoint exec'd from the image and"
+  echo "the native extensions (nokogiri at boot; brotli built this leg)"
+  echo "bound to the ruby DLL facet."
   exit 0
 fi
 
 if grep -q "LoadError" "$log" && grep -qiE "cannot load such file -- (fontist|nokogiri|ffi|brotli)" "$log"; then
-  echo "::notice::KNOWN BLOCKER (windows runtime layer): payload exec on"
-  echo "windows-ucrt64 is gated by the mount-addressing gap (G1: C-level"
-  echo "re-rooting of drive-relative paths out of the VFS) and, behind it,"
-  echo "the missing symbol provider for dynamic native extensions (G2)."
-  echo "The windows payload BUILD is green; execution awaits the runtime"
-  echo "fixes. See docs/build-notes.md § Windows for the evidence."
-  exit 0
+  echo "BOOT SMOKE REGRESSION (rc=$rc): the log carries the pre-DLL-facet"
+  echo "runtime-layer signature (G1 mount addressing / G2 no dynamic native"
+  echo "extensions). Those gaps are CLOSED on the 0.16.x line — the runtime"
+  echo "regressed or the wrong runtime resolved. Failing the leg."
+  exit 1
 fi
 
-echo "BOOT SMOKE failed in an UNRECOGNIZED way (rc=$rc) — this is not one"
-echo "of the pinned runtime-layer gaps. Full log above."
+echo "BOOT SMOKE failed in an UNRECOGNIZED way (rc=$rc). Full log above."
 exit 1

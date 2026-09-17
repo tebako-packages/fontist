@@ -4,16 +4,13 @@ name: build-payload
 #
 # STATUS:
 #   aarch64-macos — green: build + boot smoke; tags publish.
-#   x86_64-windows-ucrt — the BUILD is green (staging incl. the brotli
-#   native build, image, manifest). The boot smoke is pinned to a KNOWN
-#   runtime-layer blocker: current windows-ucrt64 runtimes cannot load
-#   dynamically linked native extensions at all — the interpreter is
-#   --disable-shared/--with-static-linked-ext, exports no symbols, and
-#   the release ships no ruby DLL, so nokogiri/ffi/brotli .so files have
-#   nothing to bind to (docs/build-notes.md § Windows). tools/smoke_verdict
-#   turns exactly that signature green and fails any other failure mode;
-#   NO windows artifact publishes until the runtime factory ships a
-#   symbol provider and the gate here is enforced.
+#   x86_64-windows-ucrt — build + boot smoke ENFORCED: the pinned
+#   0.16.25 runtime line carries the windows runtime-layer fixes the
+#   exec gate waited on (the ruby DLL facet + the loader interpose /
+#   library_aliases — spec 22 phase W2), so tools/smoke_verdict runs
+#   fail-closed: ANY boot-smoke failure fails the leg. Tags publish the
+#   windows artifact together with the mac leg (docs/build-notes.md
+#   § Windows).
 on:
   push:
     branches: [main]
@@ -38,21 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.6, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.8, sha256-pinned)
         # The packager is the RELEASE BINARY (releases are the
         # interface); the digests are pinned here and cross-checked
         # against the release's SHA256SUMS (provenance: docs/build-notes.md).
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v0.1.6"
-          curl -sLO "$base/tebako-0.1.6-macos-arm64"
-          curl -sLO "$base/tfs-0.1.6-macos-arm64"
-          echo "77b09c346cdf11bb4a5c6fc9b35852841b1357355587d87008dc7be8d23390ee  tebako-0.1.6-macos-arm64" > SHA256PINS
-          echo "5e9a4131347a231c889426f67d02344a65999bc9b9ec998ce6930d2917ec7336  tfs-0.1.6-macos-arm64" >> SHA256PINS
+          base="https://github.com/tamatebako/tebako/releases/download/v2.8.8"
+          curl -sLO "$base/tebako-2.8.8-macos-arm64"
+          curl -sLO "$base/tfs-2.8.8-macos-arm64"
+          curl -sLO "$base/SHA256SUMS"
+          echo "c7bb7542626164d4f755d30dcf8a6eb976cd275446122f373061e527fda4e767  tebako-2.8.8-macos-arm64" > SHA256PINS
+          echo "f034d9ec0c071da7b0e57b13355a65c2ccd6b5905180bacd70e0d2136308b4f1  tfs-2.8.8-macos-arm64" >> SHA256PINS
           shasum -a 256 -c SHA256PINS
-          chmod 755 tebako-0.1.6-macos-arm64 tfs-0.1.6-macos-arm64
-          mv tebako-0.1.6-macos-arm64 tebako
-          mv tfs-0.1.6-macos-arm64 tfs
+          # The pins must agree with the release's own sums (both anchored).
+          while read -r want asset; do
+            got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: pinned=$want release=${got:-ABSENT}"; exit 1; }
+          done < SHA256PINS
+          chmod 755 tebako-2.8.8-macos-arm64 tfs-2.8.8-macos-arm64
+          mv tebako-2.8.8-macos-arm64 tebako
+          mv tfs-2.8.8-macos-arm64 tfs
           echo "$RUNNER_TEMP/tebako-tools" >> "$GITHUB_PATH"
 
       - name: Fetch factory tools (tamatebako/libtfs v0.13.0, SHA256SUMS-verified)
@@ -102,22 +106,28 @@ jobs:
           # manifest as YAML (the macOS leg uses the system ruby).
           install: >-
             make
-            patch
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-ruby
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v0.1.6, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.8, sha256-pinned)
         shell: msys2 {0}
         run: |
+          set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v0.1.6"
-          curl -sLO "$base/tebako-0.1.6-windows-ucrt64.exe"
-          curl -sLO "$base/tfs-0.1.6-windows-ucrt64.exe"
-          echo "d66355925a696254d07e45bcdee14f44020b6d6ce04a74d3ca548405132807d0  tebako-0.1.6-windows-ucrt64.exe" > SHA256PINS
-          echo "85e7b886e71b919ae6ecec2a36bcdb401691ac57197c581c21b61c9d4c0df395  tfs-0.1.6-windows-ucrt64.exe" >> SHA256PINS
+          base="https://github.com/tamatebako/tebako/releases/download/v2.8.8"
+          curl -sLO "$base/tebako-2.8.8-windows-ucrt64.exe"
+          curl -sLO "$base/tfs-2.8.8-windows-ucrt64.exe"
+          curl -sLO "$base/SHA256SUMS"
+          echo "c24eaa8eadee743d3d2a0ca8794c1e4d17c0f1063a7546b9aebf3df9dd8f5f0f  tebako-2.8.8-windows-ucrt64.exe" > SHA256PINS
+          echo "0c0342b94cbadba32b268ffeea24d4d1644ac93337e0bcbfb41271040cf13cb5  tfs-2.8.8-windows-ucrt64.exe" >> SHA256PINS
           sha256sum -c SHA256PINS
-          cp tebako-0.1.6-windows-ucrt64.exe tebako.exe
-          cp tfs-0.1.6-windows-ucrt64.exe tfs.exe
+          # The pins must agree with the release's own sums (both anchored).
+          while read -r want asset; do
+            got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
+            [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: pinned=$want release=${got:-ABSENT}"; exit 1; }
+          done < SHA256PINS
+          cp tebako-2.8.8-windows-ucrt64.exe tebako.exe
+          cp tfs-2.8.8-windows-ucrt64.exe tfs.exe
           echo "TEBAKO_TOOLS=$(cygpath -m "$RUNNER_TEMP/tebako-tools")" >> "$GITHUB_ENV"
 
       - name: Build the payload
@@ -130,12 +140,10 @@ jobs:
           tools/build
 
       - name: Boot-smoke + verdict
-        # The in-image assertions and the extract round-trip are hard
-        # gates. The exec leg is pinned to the KNOWN windows runtime-
-        # layer blocker (header comment): only its exact LoadError
-        # signature is accepted as green; a PASS or any other failure
-        # mode is reported by tools/smoke_verdict (pass flips the gate,
-        # anything else fails the leg).
+        # Fully enforcing (header comment): on the 0.16.25 runtime line
+        # the exec leg must PASS — tools/smoke_verdict fails the leg on
+        # ANY nonzero rc, classifying the old LoadError signature as a
+        # named runtime regression vs. an undiagnosed failure.
         shell: msys2 {0}
         run: |
           . out/x86_64-windows-ucrt/runtime.env
@@ -156,7 +164,10 @@ jobs:
   release:
     name: publish
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    # Both legs publish: the windows boot smoke runs enforcing on the
+    # 0.16.25 line, so the wiring (needs + tools/publish's triplet list +
+    # the registry entry) includes the windows artifact.
+    needs: [build, build-windows]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -164,7 +175,18 @@ jobs:
         with:
           pattern: dist-*
           path: out
-          merge-multiple: true
+          merge-multiple: false
+      - name: Restore layout
+        # each dist-<triplet> artifact carries the leg's out/<triplet>/
+        # contents; put them back at out/<triplet>/ for tools/publish
+        run: |
+          set -e
+          for d in out/dist-*/; do
+            p="${d#out/dist-}"; p="${p%/}"
+            mkdir -p "out/$p"
+            mv "$d"* "out/$p/"
+            rmdir "$d"
+          done
       - name: Publish payloads + registry
         # artifacts per triplet + SHA256SUMS + the resolved tpkg-registry.yaml
         # (tools/publish regenerates the repo-root registry in the current
@@ -193,7 +215,7 @@ jobs:
           branch="publish/${{ github.ref_name }}-registry"
           git checkout -b "$branch"
           git add tpkg-registry.yaml
-          git commit -m "publish ${{ github.ref_name }}: registry entry (aarch64-macos)"
+          git commit -m "publish ${{ github.ref_name }}: registry entry (aarch64-macos, x86_64-windows-ucrt)"
           git push origin "$branch"
           if ! gh pr view "$branch" >/dev/null 2>&1; then
             gh pr create --base main --head "$branch" \
