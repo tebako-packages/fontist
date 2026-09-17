@@ -1,20 +1,25 @@
+---
 schema_version: 1
-# tebako-packages/fontist — this feedstock's payload registry.
-# Consumed as tfs:github:tebako-packages/fontist (spec 04); the dispatcher's
-# resolution surface is payloads[].default (spec 07 §2.1).
 payloads:
-  - name: fontist
-    kind: app
-    summary: Fontist — the font installer CLI (ruby app; runtime-required payload)
-    default: "3.0.10"
-    versions:
-      - version: "3.0.10"
-        runtime_requirement: {engine: ruby, constraint: "~> 3.3.0"}
-        platforms:
-          - triplet: aarch64-macos
-            image:
-              url: "https://github.com/tebako-packages/fontist/releases/download/3.0.10/fontist-3.0.10-aarch64-macos.tfs"
-              sha256: "25dd5c74bc3581d361badf3b0be8fff72a5f110350ed9b48560b06d4704ea898"  # pinned by tools/publish
-            manifest:
-              url: "https://github.com/tebako-packages/fontist/releases/download/3.0.10/fontist-3.0.10.manifest.yaml"
-              sha256: "cf1cb70b220aa86b019fa115a13e2fad975ed861b1ddef6f7c5242e1ee496a16"  # pinned by tools/publish
+- name: fontist
+  kind: app
+  versions:
+  - version: 3.0.10
+    platforms:
+      aarch64-macos:
+        artifact: fontist-3.0.10-aarch64-macos.tfs
+        sha256: 10f230612da1fc3dce26bbb96994ab7ec44e503ff50835389c93165aa4efeb66
+      x86_64-windows-ucrt:
+        artifact: fontist-3.0.10-x86_64-windows-ucrt.tfs
+        sha256: 700ee9f6d7f49f8e58500353ec6c0a6bdd2b584531f95fdddc2b9345113b6618
+    release:
+      ref: tfs:github:tebako-packages/fontist:3.0.10-1
+    signature:
+      keyid: efc3c250f7862a48
+      asc: fontist-3.0.10-aarch64-macos.tfs.asc
+    runtime_requirement:
+      engine: ruby
+      constraint: "~> 3.3.0"
+    entrypoints:
+    - fontist
+  default: 3.0.10
