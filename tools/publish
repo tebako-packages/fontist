@@ -95,7 +95,7 @@ if [ -n "$SIGN_KEYID" ]; then
     ASCS+=("$f.asc")
   done
 else
-  echo "publish: recipe declares no signing — releasing UNSIGNED (spec 09: unsigned stays first-class, with this loud warning)"
+  echo "publish: recipe declares no signing — releasing UNSIGNED (unsigned stays first-class, with this loud warning)"
 fi
 
 # --- release -----------------------------------------------------------
