@@ -92,7 +92,7 @@ tebako-runtime-ruby release manifest by tebako-cli's resolver):
    `templates/`), `local/stub.rb` (v0.15.x launcher-ABI compat),
    `lib/ruby/gems/3.3.0/{gems,specifications,extensions,build_info}`.
    `.gem` caches and doc output are excluded.
-5. `mkdwarfs-t` (pinned libtfs release asset) the tree →
+5. `tfs mkimage` (the pinned tebako CLI; limnifs, the default format) the tree →
    `fontist-3.0.10-aarch64-macos.tfs`.
 
 ### Resolution policy (pins and skips — each justified)
@@ -391,7 +391,7 @@ variants; brotli source-built like the mac leg — the shim flow works
 unchanged on POSIX), one workflow job on `ubuntu-24.04` with the
 `linux-gnu-x86_64` v2.8.8 tools, `TRIPLET=x86_64-linux-gnu`. The
 `tools/build` case statement grows one arm (same staging family as mac;
-imaging via `tfs mkimage` or the libtfs mkdwarfs linux asset).
+imaging via `tfs mkimage`, as on the shipping legs).
 
 ### 8.5 Tool provenance (this era)
 
@@ -402,5 +402,5 @@ imaging via `tfs mkimage` or the libtfs mkdwarfs linux asset).
 | `tebako-2.8.8-macos-arm64` | tamatebako/tebako v2.8.8 | `c7bb7542626164d4f755d30dcf8a6eb976cd275446122f373061e527fda4e767` (release SHA256SUMS; pinned in the workflow) |
 | `tfs-2.8.8-macos-arm64` | tamatebako/tebako v2.8.8 | `f034d9ec0c071da7b0e57b13355a65c2ccd6b5905180bacd70e0d2136308b4f1` (release SHA256SUMS; pinned in the workflow) |
 | runtime (both legs) | tebako-runtime-ruby v0.16.25, ruby 3.3.12 | mac leg: release manifest (CLI-verified); windows leg: per-asset `.sha256` sidecars + the per-stem manifest shard (`dll.install_as`) |
-| `mkdwarfs-macos-arm64` (mac imaging) | tamatebako/libtfs v0.13.0 | release SHA256SUMS |
+| `tfs-2.8.8-macos-arm64` (mac imaging, same binary as line above) | — | the mac leg images with the pinned tfs CLI since the limnifs sweep; no factory-tool download remains |
 | ruby SDK tarball (windows brotli) | cache.ruby-lang.org `ruby-3.3.12.tar.gz` | `b06d63be…051b` (recipe pin) |

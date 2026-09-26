@@ -6,7 +6,8 @@
 #   aarch64-macos (default) — shim staging: the stub press's deploy-driver
 #     shim (o/p/ruby) runs every ruby process; the tebako CLI provisions
 #     the runtime SDK itself, so brotli's source build rides the shim's
-#     own build_overrides. Imaging: mkdwarfs-t (libtfs release asset).
+#     own build_overrides. Imaging: tfs mkimage (limnifs, the default
+#     format).
 #   x86_64-windows-ucrt (TRIPLET=) — driver staging: no ruby shim exists
 #     on Windows (tebako-cli deploy.rs), so the staging scripts run as
 #     entries of a purpose-built driver image (tfs mkimage) with the env
@@ -22,8 +23,7 @@
 #   TEBAKO_VERSION  runtime release line (default 0.16.25 — the feedstock
 #                   pins the line; never ride the CLI's built-in default)
 #   TEBAKO_HOME     runtime cache root (default: out/tebako-home)
-#   MKDWARFS        mkdwarfs-t binary (mac leg; default: mkdwarfs on PATH)
-#   TFS             tfs CLI binary (windows leg; default: tfs on PATH)
+#   TFS             tfs CLI binary (both legs; default: tfs on PATH)
 #   WORK            build workspace (default: out/work-$TRIPLET)
 #   OUT             artifact dir   (default: out/$TRIPLET)
 #
@@ -44,7 +44,6 @@ API_V="3.3.0"
 
 TEBAKO_CLI="${TEBAKO_CLI:-tebako}"
 TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.25}"
-MKDWARFS="${MKDWARFS:-mkdwarfs}"
 TFS="${TFS:-tfs}"
 WORK="${WORK:-$FEEDSTOCK/out/work-$TRIPLET}"
 OUT="${OUT:-$FEEDSTOCK/out/$TRIPLET}"
@@ -253,7 +252,7 @@ case "$TRIPLET" in
     cp "$FEEDSTOCK/tools/stage_app.rb" "$FEEDSTOCK/tools/stage_brotli_manual.rb" "$DRIVER/"
     DRIVER_IMG="$WORK/stage-driver.tfs"
     rm -f "$DRIVER_IMG"
-    "$TFS" mkimage --format dwarfs "$DRIVER" -o "$DRIVER_IMG"
+    "$TFS" mkimage --format limnifs "$DRIVER" -o "$DRIVER_IMG"
 
     run_driver() { # <entry> [args...]
       # NB: MSYS2_ARG_CONV_EXCL='*' — MSYS2 path-converts POSIX-looking
@@ -319,8 +318,8 @@ step "image the payload"
 IMG="$OUT/fontist-$VERSION-$TRIPLET.tfs"
 rm -f "$IMG"
 case "$TRIPLET" in
-  aarch64-macos)       "$MKDWARFS" -i "$PAYLOAD" -o "$IMG" --no-progress ;;
-  x86_64-windows-ucrt) "$TFS" mkimage --format dwarfs "$PAYLOAD" -o "$IMG" ;;
+  aarch64-macos)       "$TFS" mkimage --format limnifs "$PAYLOAD" -o "$IMG" ;;
+  x86_64-windows-ucrt) "$TFS" mkimage --format limnifs "$PAYLOAD" -o "$IMG" ;;
 esac
 sha="$(sha256_file "$IMG")"
 echo "image: $IMG"
@@ -343,9 +342,8 @@ echo "manifest: $MAN"
 # incident: an invalid-YAML manifest caught at publish, exit 65). This
 # feedstock ships the manifest as the sibling yaml (no in-image
 # embedding): it must parse as YAML, and every entrypoint it declares
-# must exist in the image — re-read with the pinned tfs CLI (the windows
-# leg's own imager; on the mac leg the same CLI line reads the
-# factory-mkdwarfs image, as tools/boot_smoke already does).
+# must exist in the image — re-read with the pinned tfs CLI (both legs'
+# own imager, as tools/boot_smoke already does).
 # Path rules (windows leg): the native tfs takes the host image path in
 # native form (winpath), while the VFS entrypoint paths (/bin/fontist)
 # must reach it verbatim — msys2 argument conversion would rewrite them
