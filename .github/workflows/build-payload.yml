@@ -59,20 +59,11 @@ jobs:
           mv tfs-2.8.8-macos-arm64 tfs
           echo "$RUNNER_TEMP/tebako-tools" >> "$GITHUB_PATH"
 
-      - name: Fetch factory tools (tamatebako/libtfs v0.13.0, SHA256SUMS-verified)
-        run: |
-          mkdir -p "$RUNNER_TEMP/factory-tools" && cd "$RUNNER_TEMP/factory-tools"
-          base="https://github.com/tamatebako/libtfs/releases/download/v0.13.0"
-          curl -sLO "$base/SHA256SUMS"
-          curl -sLO "$base/mkdwarfs-macos-arm64"
-          grep "mkdwarfs-macos-arm64" SHA256SUMS | shasum -a 256 -c -
-          chmod 755 mkdwarfs-macos-arm64
-          echo "$RUNNER_TEMP/factory-tools" >> "$GITHUB_PATH"
-
       - name: Build the payload
+        # The mac leg images with the same pinned tfs CLI (fetched above,
+        # on PATH) — no factory-tool download anywhere in this workflow.
         env:
           TEBAKO_CLI: tebako
-          MKDWARFS: mkdwarfs-macos-arm64
         run: tools/build
 
       - name: Boot-smoke

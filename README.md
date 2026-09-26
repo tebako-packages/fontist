@@ -5,7 +5,7 @@ Feedstock for **fontist** — the first `kind: app` payload of the
 self-contained `kind: toolkit` payloads).
 
 - Upstream: [fontist](https://github.com/fontist/fontist) 3.0.10 (RubyGems)
-- Payload: `fontist-3.0.10-<triplet>.tfs` (DwarFS image, per-triplet);
+- Payload: `fontist-3.0.10-<triplet>.tfs` (LimniFS image, per-triplet);
   `aarch64-macos` and `x86_64-windows-ucrt` both build in CI with an
   enforcing boot smoke, and tags publish both (the windows runtime ships
   the ruby DLL facet + library_aliases — spec 22 phase W2;

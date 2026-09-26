@@ -41,14 +41,10 @@ build:
   skip_defaults: [json, bigdecimal, strscan, racc, drb, uri, logger,
                   minitest, securerandom, benchmark, ostruct, rexml]
 
-# Factory tools used by tools/build (image creation). The dwarfs-t
-# mkdwarfs/tebakofs binaries ship as per-platform assets of libtfs
-# releases; every download is verified against the release's SHA256SUMS.
-# (mac leg images with mkdwarfs; the windows leg images with the tfs CLI
-# from the tebako release — same Writer, in-process.)
-tools:
-  repo: "tamatebako/libtfs"
-  release: "v0.13.0"
+# Image creation: BOTH legs image with the tfs CLI from the pinned
+# tamatebako/tebako release (fetched sha256-pinned in the workflow;
+# `tfs mkimage` — limnifs, the default format — in-process, no factory
+# binaries anywhere).
 
 # Signing (spec 09 §9 — opt-in per feedstock): on tag pushes tools/publish
 # signs every payload image (plus SHA256SUMS and the registry itself) with
