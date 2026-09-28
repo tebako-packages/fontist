@@ -17,8 +17,12 @@ build:
   runtime:
     engine: ruby
     version: "3.3.12"      # the staging + exec runtime (tebako-runtime-ruby)
-    tebako: "0.16.25"      # runtime release line (image-era; the pinned CLI
+    tebako: "0.16.31"      # runtime release line (image-era; the pinned CLI
                            # refuses pre-era releases by contract, exit 75).
+                           # 0.16.31 re-links on tebako v2.8.21 — the
+                           # 64 MiB limnifs inline-metadata ceiling this
+                           # payload's v2.8.21-written image needs (older
+                           # drivers cap at 1 MiB and mount EINVAL).
                            # The 0.16.x line ships the windows ruby DLL facet
                            # (TEBAKO_RUNTIME_DLL in the handoff env) + the
                            # loader interpose / library_aliases (spec 22
