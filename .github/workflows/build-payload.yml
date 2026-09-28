@@ -35,28 +35,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.8, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.21, sha256-pinned)
         # The packager is the RELEASE BINARY (releases are the
         # interface); the digests are pinned here and cross-checked
         # against the release's SHA256SUMS (provenance: docs/build-notes.md).
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v2.8.8"
-          curl -sLO "$base/tebako-2.8.8-macos-arm64"
-          curl -sLO "$base/tfs-2.8.8-macos-arm64"
+          base="https://github.com/tamatebako/tebako/releases/download/v2.8.21"
+          curl -sLO "$base/tebako-2.8.21-macos-arm64"
+          curl -sLO "$base/tfs-2.8.21-macos-arm64"
           curl -sLO "$base/SHA256SUMS"
-          echo "c7bb7542626164d4f755d30dcf8a6eb976cd275446122f373061e527fda4e767  tebako-2.8.8-macos-arm64" > SHA256PINS
-          echo "f034d9ec0c071da7b0e57b13355a65c2ccd6b5905180bacd70e0d2136308b4f1  tfs-2.8.8-macos-arm64" >> SHA256PINS
+          echo "e6269526d268f5ef0b6718fbbde02efe7c957733adca9971c755ad544710f6a2  tebako-2.8.21-macos-arm64" > SHA256PINS
+          echo "38f4493c1a65d37ace603db171c23d9a4580bd6053e3a3007800fbcf7a494d83  tfs-2.8.21-macos-arm64" >> SHA256PINS
           shasum -a 256 -c SHA256PINS
           # The pins must agree with the release's own sums (both anchored).
           while read -r want asset; do
             got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
             [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: pinned=$want release=${got:-ABSENT}"; exit 1; }
           done < SHA256PINS
-          chmod 755 tebako-2.8.8-macos-arm64 tfs-2.8.8-macos-arm64
-          mv tebako-2.8.8-macos-arm64 tebako
-          mv tfs-2.8.8-macos-arm64 tfs
+          chmod 755 tebako-2.8.21-macos-arm64 tfs-2.8.21-macos-arm64
+          mv tebako-2.8.21-macos-arm64 tebako
+          mv tfs-2.8.21-macos-arm64 tfs
           echo "$RUNNER_TEMP/tebako-tools" >> "$GITHUB_PATH"
 
       - name: Build the payload
@@ -100,25 +100,25 @@ jobs:
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-ruby
 
-      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.8, sha256-pinned)
+      - name: Fetch tebako CLI tools (tamatebako/tebako v2.8.21, sha256-pinned)
         shell: msys2 {0}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/tebako-tools" && cd "$RUNNER_TEMP/tebako-tools"
-          base="https://github.com/tamatebako/tebako/releases/download/v2.8.8"
-          curl -sLO "$base/tebako-2.8.8-windows-ucrt64.exe"
-          curl -sLO "$base/tfs-2.8.8-windows-ucrt64.exe"
+          base="https://github.com/tamatebako/tebako/releases/download/v2.8.21"
+          curl -sLO "$base/tebako-2.8.21-windows-ucrt64.exe"
+          curl -sLO "$base/tfs-2.8.21-windows-ucrt64.exe"
           curl -sLO "$base/SHA256SUMS"
-          echo "c24eaa8eadee743d3d2a0ca8794c1e4d17c0f1063a7546b9aebf3df9dd8f5f0f  tebako-2.8.8-windows-ucrt64.exe" > SHA256PINS
-          echo "0c0342b94cbadba32b268ffeea24d4d1644ac93337e0bcbfb41271040cf13cb5  tfs-2.8.8-windows-ucrt64.exe" >> SHA256PINS
+          echo "b2b98454c626020c50288818568d0e743c0dc7a8d57cdf91d8a8d48489eafdad  tebako-2.8.21-windows-ucrt64.exe" > SHA256PINS
+          echo "e5128ef8be90813bf9300dda39f204fff39f6d1e3eb4963128cbdfaeed88744a  tfs-2.8.21-windows-ucrt64.exe" >> SHA256PINS
           sha256sum -c SHA256PINS
           # The pins must agree with the release's own sums (both anchored).
           while read -r want asset; do
             got=$(awk -v a="$asset" '$2 == a {print $1}' SHA256SUMS)
             [ "$got" = "$want" ] || { echo "::error::pin mismatch for $asset: pinned=$want release=${got:-ABSENT}"; exit 1; }
           done < SHA256PINS
-          cp tebako-2.8.8-windows-ucrt64.exe tebako.exe
-          cp tfs-2.8.8-windows-ucrt64.exe tfs.exe
+          cp tebako-2.8.21-windows-ucrt64.exe tebako.exe
+          cp tfs-2.8.21-windows-ucrt64.exe tfs.exe
           echo "TEBAKO_TOOLS=$(cygpath -m "$RUNNER_TEMP/tebako-tools")" >> "$GITHUB_ENV"
 
       - name: Build the payload
