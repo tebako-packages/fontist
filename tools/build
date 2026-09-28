@@ -109,20 +109,22 @@ RT_EXE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
 RT_IMAGE="$RT_DIR/tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM.tfs"
 
 if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
-  # Direct fetch, verified against the release's per-asset .sha256
-  # sidecars (the resolver's own trust anchors; tmp+rename, a partial
-  # download never poisons the cache). The leg needs no shim (there is
-  # none on Windows), so the direct fetch stays the simplest path.
+  # Direct fetch, verified against the release's .tar.gz.sha256 sidecar
+  # (tmp+rename, a partial download never poisons the cache). The leg
+  # needs no shim (there is none on Windows), so the direct fetch stays
+  # the simplest path.
   # 0.16.3+: the windows runtime is a stub exe + the ruby DLL facet —
   # the exe does not start without the facet next to it under the
   # shard manifest's dll.install_as name (the SSOT for the facet name).
+  # 0.16.31+: every platform ships as ONE tar.gz bundle (exe + image +
+  # the dll facet on windows) with a single .tar.gz.sha256 sidecar; the
+  # per-asset files of the 0.16.25 era are gone.
   RT_RELEASE_URL="https://github.com/tamatebako/tebako-runtime-ruby/releases/download/v$TEBAKO_VERSION"
   RT_ASSET="tebako-runtime-$TEBAKO_VERSION-$RUBY_V-$RT_PLATFORM"
   mkdir -p "$RT_DIR"
   # The shard model: the per-stem <stem>.manifest.json is the SSOT for
-  # the facet's install name; per-asset .sha256 sidecars are the trust
-  # anchor. (The monolithic manifest.json / SHA256SUMS.txt stopped being
-  # release assets on the 0.16.24 line.)
+  # the facet's install name. (The monolithic manifest.json /
+  # SHA256SUMS.txt stopped being release assets on the 0.16.24 line.)
   curl -sL -o "$WORK/shard.json" "$RT_RELEASE_URL/$RT_ASSET.manifest.json"
   grep -q '"dll"' "$WORK/shard.json" \
     || { echo "no dll facet in shard $RT_ASSET.manifest.json (or the shard 404'd)"; exit 1; }
@@ -135,20 +137,21 @@ if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
   [ -n "$SHARD_INSTALL_AS" ] || { echo "the shard carries no dll.install_as"; exit 1; }
   [ "$SHARD_INSTALL_AS" = "$DLL_INSTALL_AS" ] \
     || { echo "dll facet drift: shard install_as=$SHARD_INSTALL_AS, derived $DLL_INSTALL_AS"; exit 1; }
-  for f in "$RT_ASSET" "$RT_ASSET.tfs" "$RT_ASSET.dll"; do
-    dst="$f"; [ "$f" = "$RT_ASSET" ] && dst="$f.exe"   # resolver cache naming
-    [ "$f" = "$RT_ASSET.dll" ] && dst="$DLL_INSTALL_AS"
-    if [ ! -f "$RT_DIR/$dst" ]; then
-      curl -sL -o "$RT_DIR/$dst.part" "$RT_RELEASE_URL/$f"
-      curl -sL -o "$WORK/expected.sha" "$RT_RELEASE_URL/$f.sha256"
-      want="$(cut -d' ' -f1 < "$WORK/expected.sha")"
-      [ ${#want} -eq 64 ] || { rm -f "$RT_DIR/$dst.part"; echo "no .sha256 sidecar for $f"; exit 1; }
-      got="$(sha256_file "$RT_DIR/$dst.part")"
-      [ "$got" = "$want" ] || { rm -f "$RT_DIR/$dst.part"; echo "SHA256 MISMATCH $f"; exit 1; }
-      mv "$RT_DIR/$dst.part" "$RT_DIR/$dst"
-    fi
-  done
-  echo "runtime verified against tebako-runtime-ruby v$TEBAKO_VERSION shard sidecars (exe + image + $DLL_INSTALL_AS)"
+  if [ ! -f "$RT_DIR/$RT_ASSET.exe" ] || [ ! -f "$RT_DIR/$RT_ASSET.tfs" ] || [ ! -f "$RT_DIR/$DLL_INSTALL_AS" ]; then
+    curl -sL -o "$WORK/$RT_ASSET.tar.gz.part" "$RT_RELEASE_URL/$RT_ASSET.tar.gz"
+    curl -sL -o "$WORK/expected.sha" "$RT_RELEASE_URL/$RT_ASSET.tar.gz.sha256"
+    want="$(cut -d' ' -f1 < "$WORK/expected.sha")"
+    [ ${#want} -eq 64 ] || { rm -f "$WORK/$RT_ASSET.tar.gz.part"; echo "no .tar.gz.sha256 sidecar for $RT_ASSET"; exit 1; }
+    got="$(sha256_file "$WORK/$RT_ASSET.tar.gz.part")"
+    [ "$got" = "$want" ] || { rm -f "$WORK/$RT_ASSET.tar.gz.part"; echo "SHA256 MISMATCH $RT_ASSET.tar.gz"; exit 1; }
+    mv "$WORK/$RT_ASSET.tar.gz.part" "$WORK/$RT_ASSET.tar.gz"
+    rm -rf "$WORK/rt-extract" && mkdir -p "$WORK/rt-extract"
+    tar xzf "$WORK/$RT_ASSET.tar.gz" -C "$WORK/rt-extract"
+    mv "$WORK/rt-extract/$RT_ASSET" "$RT_DIR/$RT_ASSET.exe"
+    mv "$WORK/rt-extract/$RT_ASSET.tfs" "$RT_DIR/$RT_ASSET.tfs"
+    mv "$WORK/rt-extract/$RT_ASSET.dll" "$RT_DIR/$DLL_INSTALL_AS"
+  fi
+  echo "runtime verified against tebako-runtime-ruby v$TEBAKO_VERSION bundle sidecar (exe + image + $DLL_INSTALL_AS)"
   RT_EXE="$RT_EXE.exe"
 fi
 [ -f "$RT_EXE" ] || { echo "no cached runtime at $RT_EXE"; exit 1; }
