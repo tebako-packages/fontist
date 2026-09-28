@@ -5,7 +5,7 @@ name: build-payload
 # STATUS:
 #   aarch64-macos — green: build + boot smoke; tags publish.
 #   x86_64-windows-ucrt — build + boot smoke ENFORCED: the pinned
-#   0.16.25 runtime line carries the windows runtime-layer fixes the
+#   runtime line carries the windows runtime-layer fixes the
 #   exec gate waited on (the ruby DLL facet + the loader interpose /
 #   library_aliases — spec 22 phase W2), so tools/smoke_verdict runs
 #   fail-closed: ANY boot-smoke failure fails the leg. Tags publish the
@@ -131,7 +131,7 @@ jobs:
           tools/build
 
       - name: Boot-smoke + verdict
-        # Fully enforcing (header comment): on the 0.16.25 runtime line
+        # Fully enforcing (header comment): on the pinned runtime line
         # the exec leg must PASS — tools/smoke_verdict fails the leg on
         # ANY nonzero rc, classifying the old LoadError signature as a
         # named runtime regression vs. an undiagnosed failure.
@@ -156,7 +156,7 @@ jobs:
     name: publish
     if: startsWith(github.ref, 'refs/tags/')
     # Both legs publish: the windows boot smoke runs enforcing on the
-    # 0.16.25 line, so the wiring (needs + tools/publish's triplet list +
+    # pinned runtime line, so the wiring (needs + tools/publish's triplet list +
     # the registry entry) includes the windows artifact.
     needs: [build, build-windows]
     runs-on: ubuntu-24.04

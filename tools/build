@@ -20,7 +20,7 @@
 # Inputs (env, all with sane defaults):
 #   TRIPLET         aarch64-macos | x86_64-windows-ucrt
 #   TEBAKO_CLI      tebako-cli binary (default: tebako on PATH)
-#   TEBAKO_VERSION  runtime release line (default 0.16.25 — the feedstock
+#   TEBAKO_VERSION  runtime release line (default 0.16.31 — the feedstock
 #                   pins the line; never ride the CLI's built-in default)
 #   TEBAKO_HOME     runtime cache root (default: out/tebako-home)
 #   TFS             tfs CLI binary (both legs; default: tfs on PATH)
@@ -43,7 +43,7 @@ RUBY_V="3.3.12"
 API_V="3.3.0"
 
 TEBAKO_CLI="${TEBAKO_CLI:-tebako}"
-TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.25}"
+TEBAKO_VERSION="${TEBAKO_VERSION:-0.16.31}"
 TFS="${TFS:-tfs}"
 WORK="${WORK:-$FEEDSTOCK/out/work-$TRIPLET}"
 OUT="${OUT:-$FEEDSTOCK/out/$TRIPLET}"
@@ -86,7 +86,7 @@ case "$TRIPLET" in
     # The entry file must not be named stub.rb: the app root mounts at
     # /local, so `stub.rb` collides with the press's reserved in-image
     # dispatcher path /local/stub.rb (tebako >= 2.1.1 rejects it,
-    # exit 143). -R pins the ruby line — the 0.16.25 release hosts
+    # exit 143). -R pins the ruby line — the runtime release hosts
     # several (3.1/3.2/3.3/3.4/4.0) and a pin-less press resolves the
     # newest, not the recipe's.
     mkdir -p "$WORK/stubapp"
