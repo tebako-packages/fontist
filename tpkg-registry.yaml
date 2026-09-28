@@ -8,12 +8,12 @@ payloads:
     platforms:
       aarch64-macos:
         artifact: fontist-3.0.10-aarch64-macos.tfs
-        sha256: 10f230612da1fc3dce26bbb96994ab7ec44e503ff50835389c93165aa4efeb66
+        sha256: bc65dd6f5090037237e097d1c86b7def5c98ce3c869e84fd5e305fe45d464fc1
       x86_64-windows-ucrt:
         artifact: fontist-3.0.10-x86_64-windows-ucrt.tfs
-        sha256: 700ee9f6d7f49f8e58500353ec6c0a6bdd2b584531f95fdddc2b9345113b6618
+        sha256: 4abec14cdefb5f2adc466fcb69891598a4f04d6bae5339cd6c3494057e6ee2cc
     release:
-      ref: tfs:github:tebako-packages/fontist:3.0.10-1
+      ref: tfs:github:tebako-packages/fontist:3.0.10-2
     signature:
       keyid: efc3c250f7862a48
       asc: fontist-3.0.10-aarch64-macos.tfs.asc
