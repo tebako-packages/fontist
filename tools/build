@@ -125,7 +125,7 @@ if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
   # The shard model: the per-stem <stem>.manifest.json is the SSOT for
   # the facet's install name. (The monolithic manifest.json /
   # SHA256SUMS.txt stopped being release assets on the 0.16.24 line.)
-  curl -sL -o "$WORK/shard.json" "$RT_RELEASE_URL/$RT_ASSET.manifest.json"
+  curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors -o "$WORK/shard.json" "$RT_RELEASE_URL/$RT_ASSET.manifest.json"
   grep -q '"dll"' "$WORK/shard.json" \
     || { echo "no dll facet in shard $RT_ASSET.manifest.json (or the shard 404'd)"; exit 1; }
   # The facet's install name follows the factory's rubyinstaller-style
@@ -138,8 +138,8 @@ if [ "$TRIPLET" = "x86_64-windows-ucrt" ]; then
   [ "$SHARD_INSTALL_AS" = "$DLL_INSTALL_AS" ] \
     || { echo "dll facet drift: shard install_as=$SHARD_INSTALL_AS, derived $DLL_INSTALL_AS"; exit 1; }
   if [ ! -f "$RT_DIR/$RT_ASSET.exe" ] || [ ! -f "$RT_DIR/$RT_ASSET.tfs" ] || [ ! -f "$RT_DIR/$DLL_INSTALL_AS" ]; then
-    curl -sL -o "$WORK/$RT_ASSET.tar.gz.part" "$RT_RELEASE_URL/$RT_ASSET.tar.gz"
-    curl -sL -o "$WORK/expected.sha" "$RT_RELEASE_URL/$RT_ASSET.tar.gz.sha256"
+    curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors -o "$WORK/$RT_ASSET.tar.gz.part" "$RT_RELEASE_URL/$RT_ASSET.tar.gz"
+    curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors -o "$WORK/expected.sha" "$RT_RELEASE_URL/$RT_ASSET.tar.gz.sha256"
     want="$(cut -d' ' -f1 < "$WORK/expected.sha")"
     [ ${#want} -eq 64 ] || { rm -f "$WORK/$RT_ASSET.tar.gz.part"; echo "no .tar.gz.sha256 sidecar for $RT_ASSET"; exit 1; }
     got="$(sha256_file "$WORK/$RT_ASSET.tar.gz.part")"
@@ -165,7 +165,7 @@ step "fetch + sha256-verify the closure ($CLOSURE)"
 grep -v '^#' "$CLOSURE" | grep -v '^\s*$' | while read -r full sha; do
   f="$WORK/gempkgs/$full.gem"
   [ -f "$f" ] && continue
-  curl -sL -o "$f" "https://rubygems.org/downloads/$full.gem"
+  curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors -o "$f" "https://rubygems.org/downloads/$full.gem"
   actual="$(sha256_file "$f")"
   [ "$actual" = "$sha" ] || { echo "SHA256 MISMATCH $full: $actual != $sha"; exit 1; }
 done
@@ -214,7 +214,7 @@ case "$TRIPLET" in
     IMPLIB="$SDK/lib/libruby-exp.a"
     if [ ! -f "$IMPLIB" ]; then
       mkdir -p "$SDK/include/ruby-$API_V" "$SDK/lib"
-      curl -sL -o "$WORK/ruby.tar.gz" "$SDK_URL"
+      curl -fsSL --retry 5 --retry-delay 4 --retry-all-errors -o "$WORK/ruby.tar.gz" "$SDK_URL"
       actual="$(sha256_file "$WORK/ruby.tar.gz")"
       [ "$actual" = "$SDK_SHA256" ] || { echo "SHA256 MISMATCH ruby tarball"; exit 1; }
       rm -rf "$WORK/ruby-src" "$WORK/ruby-build"
