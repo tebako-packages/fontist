@@ -80,6 +80,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-aarch64-macos
+          retention-days: 2
           path: out/aarch64-macos/
 
   build-windows:
@@ -150,6 +151,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-x86_64-windows-ucrt
+          retention-days: 2
           path: out/x86_64-windows-ucrt/
 
   release:
